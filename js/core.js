@@ -297,13 +297,14 @@ async function makeBus(room) {
 class LocalStore {
   constructor(room, mode, meta) {
     this.local = true; this.room = room; this.key = 'kk:room:' + room; this.meta = meta || { from: 'dj' };
-    this.fns = []; this.tickFns = []; this.connFns = []; this.conn = 'off';
+    this.fns = []; this.tickFns = []; this.aliveFns = []; this.connFns = []; this.conn = 'off';
     this.state = LS.get(this.key); if (!this.state) { this.state = initState(room, mode); LS.set(this.key, this.state); }
     this.bc = new BroadcastChannel('kk:' + room);
     this.bc.onmessage = e => {
       const m = e.data;
       if (m.t === 'state') { this.state = LS.get(this.key) || this.state; this.emit(); }
       else if (m.t === 'tick') this.tickFns.forEach(f => f(m));
+      else if (m.t === 'alive') this.aliveFns.forEach(f => f(m));
       else if (m.t === 'book') this.emit();
     };
   }
@@ -319,6 +320,9 @@ class LocalStore {
     return Promise.resolve(r);
   }
   tick(m) { this.bc.postMessage(m); this.tickFns.forEach(f => f(m)); }
+  // Lebenszeichen des Player-Fensters, damit die Konsole weiß, ob das Bühnenbild offen ist
+  onAlive(f) { this.aliveFns.push(f); }
+  alive(m) { this.bc.postMessage(m); this.aliveFns.forEach(f => f(m)); }
   bookChanged() { this.bc.postMessage({ t: 'book' }); this.emit(); if (this.bus) this.bus.send({ t: 'book', b: bookPub() }); }
   search(q) { return ytSearch(q); }
   book() { return bookList(); }
@@ -368,6 +372,8 @@ class RemoteStore {
   }
   on(f) { this.fns.push(f); f(this.state); }
   onTick() { }
+  onAlive() { }
+  alive() { }
   onConn(f) { this.connFns.push(f); f(this.conn); }
   setConn(c) { this.conn = c; this.connFns.forEach(f => f(c)); }
   emit() { this.fns.forEach(f => { try { f(this.state); } catch (e) { console.error(e); } }); }

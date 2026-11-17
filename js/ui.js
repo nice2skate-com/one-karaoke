@@ -116,6 +116,7 @@ class Player {
     else if (d === 5) this.report('cued');
   }
   tick() {
+    this.store.alive({ t: 'alive', blocked: this.blocked, ready: this.ready });
     if (!this.ready || !this.key) return;
     const st = this.p.getPlayerState(), s = this.store.state;
     if (st === 1 || st === 2 || st === 3) this.store.tick({ t: 'tick', cur: this.p.getCurrentTime() || 0, dur: this.p.getDuration() || 0 });
@@ -361,6 +362,20 @@ function viewDJ(app, room) {
   const tApprove = toggle('Wünsche erst freigeben', true, v => store.dispatch('set', { approve: v }));
   const ticker = h('input', { class: 'in', placeholder: 'Hinweis für das Bühnenbild (z. B. „Buffet ist eröffnet“)', maxLength: 140, onchange: e => store.dispatch('set', { ticker: e.target.value }) });
   const qrArea = h('div');
+  const playerHint = h('div');
+  let lastAlive = 0, aliveInfo = {}, hintKey = '';
+  store.onAlive(m => { lastAlive = Date.now(); aliveInfo = m; drawHint(); });
+  const openStage = () => window.open(link('stage', room), 'kk-stage-' + room);
+  function drawHint() {
+    if (!store.local || !store.state) return;
+    const c = store.state.current, open = Date.now() - lastAlive < 2600;
+    const k = !c || !c.vid ? '' : !open ? 'closed' : aliveInfo.blocked ? 'blocked' : !aliveInfo.ready ? 'loading' : '';
+    if (k === hintKey) return; hintKey = k;
+    put(playerHint, k === 'closed' ? h('div', { class: 'alert' }, 'Das Bühnenbild ist nicht geöffnet. Das Video läuft dort – nicht in der Konsole.', h('button', { class: 'btn primary', onclick: openStage }, 'Bühnenbild öffnen'))
+      : k === 'blocked' ? h('div', { class: 'alert' }, 'Der Browser wartet auf einen Klick: im Bühnenbild-Fenster einmal auf „Wiedergabe starten“ klicken.')
+      : k === 'loading' ? h('div', { class: 'alert' }, 'Das Bühnenbild lädt den YouTube-Player noch. Dauert es länger, bitte die Internetverbindung prüfen.') : null);
+  }
+  setInterval(drawHint, 1000);
   let cur = 0, dur = 0;
   store.onTick(m => { cur = m.cur; dur = m.dur; pBar.style.width = dur ? (cur / dur * 100) + '%' : '0'; pTime.textContent = fmtDur(cur) + ' / ' + fmtDur(dur); });
 
@@ -441,13 +456,13 @@ function viewDJ(app, room) {
 
   app.append(h('div', { class: 'page dj' },
     h('header', { class: 'top' }, h('a', { href: link('') }, logo()), h('div', { class: 'grow' }, roomName, badge),
-      store.local ? h('button', { class: 'btn', onclick: () => window.open(link('stage', room), 'kk-stage-' + room) }, 'Bühnenbild öffnen') : null,
+      store.local ? h('button', { class: 'btn', onclick: openStage }, 'Bühnenbild öffnen') : null,
       store.local ? h('button', { class: 'btn', onclick: () => songbookDlg(store) }, 'Songbuch') : null,
       h('button', { class: 'btn', onclick: () => settingsDlg(store) }, 'Einstellungen')),
     h('main', { class: 'cols' },
       h('section', { class: 'panel' }, h('h2', null, 'Song aufnehmen'), Picker(store, 'dj')),
       h('section', { class: 'panel' }, inboxBox, h('h2', null, 'Warteschlange ', qCount), queueBox),
-      h('section', { class: 'panel' }, h('h2', null, 'Bühne'), nowBox, h('div', { class: 'prog' }, pBar), h('div', { class: 'row between' }, pTime, h('span', { class: 'mut' }, 'Leertaste = Start/Pause')),
+      h('section', { class: 'panel' }, h('h2', null, 'Bühne'), nowBox, playerHint, h('div', { class: 'prog' }, pBar), h('div', { class: 'row between' }, pTime, h('span', { class: 'mut' }, 'Leertaste = Start/Pause')),
         h('div', { class: 'transport' }, h('button', { class: 'btn icon', title: 'Von vorn', onclick: () => act('restart') }, ico('restart')),
           h('button', { class: 'btn', title: '10 Sekunden zurück', onclick: () => act('seek', { to: Math.max(0, cur - 10) }) }, '−10'), mainBtn,
           h('button', { class: 'btn', title: '10 Sekunden vor', onclick: () => act('seek', { to: cur + 10 }) }, '+10'),
