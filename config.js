@@ -10,7 +10,7 @@
 // publicUrl: Internet-Adresse der App. Wird für den QR-Code gebraucht, wenn die App
 //   lokal auf dem Mac läuft (start-mac.command), z. B. um eigene Videodateien abzuspielen.
 window.KK_CONFIG = {
-  publicUrl: "https://one-karaoke.pages.dev/",
+  publicUrl: "https://karaoke.dj-kolja-one.de/",
   supabaseUrl: "https://envdjwhktfgphcknsbho.supabase.co",
   supabaseKey: "sb_publishable_9YX_95S_MyoJEKhaKsFyXA_Ny8ggw_A"
 };
