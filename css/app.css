@@ -177,3 +177,5 @@ input[type=range] { width: 100%; accent-color: var(--bronze); }
 .card h1 { font-size: clamp(2rem, min(13cqh, 13cqw), 9.5rem); } .card h1.soft { font-size: clamp(1.4rem, min(7.2cqh, 6cqw), 5.2rem); }
 .vid video { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }
 .noimg.file { border-style: solid; color: var(--bronze); letter-spacing: .12em; text-transform: uppercase; }
+.stage.in-kiosk .sbar { min-height: 0; padding: 1.2vh 2vw; } .stage.in-kiosk .sbar .ln { font-size: clamp(.85rem, 2.2vh, 1.4rem); }
+.fake { position: absolute; inset: 0; }

@@ -95,7 +95,7 @@ function finish(s, sung, auto) {
   const c = s.current; if (!c) return;
   s.history.unshift({ id: c.id, name: c.name, t: c.t, a: c.a, vid: c.vid, dur: c.dur, sid: c.sid, sung: !!sung, ts: Date.now() });
   if (s.history.length > 300) s.history.length = 300;
-  s.last = sung ? { name: c.name, t: c.t, at: Date.now() } : null;
+  s.last = sung ? { name: c.name, t: c.t, a: c.a, at: Date.now() } : null;
   s.current = null; s.play.want = 'pause'; s.play.seek = null; s.now = { st: 'idle' };
   if (auto !== false && s.settings.autoNext && s.queue.length) toStage(s);
 }
@@ -330,7 +330,11 @@ const dj = {
       c.auth.onAuthStateChange((ev, session) => { setTimeout(() => { if (((session && session.user && session.user.id) || null) !== ((this.user && this.user.id) || null)) this.apply(session); }, 0); }); } catch (e) { console.warn('Anmeldung:', e.message); } this.ready = true; this.fns.forEach(f => f()); },
   async apply(session) {
     this.user = session ? session.user : null; this.isDj = false;
-    if (this.user) { try { const c = await sb(); const r = await c.rpc('claim_dj'); this.isDj = r.data === true; } catch (e) { /* offline */ } }
+    if (this.user) {
+      // Ohne Netz gilt der zuletzt bestätigte Stand, damit die Konsole auch offline bedienbar bleibt
+      try { const c = await sb(); const r = await c.rpc('claim_dj'); if (r.error) throw r.error; this.isDj = r.data === true; LS.set('kk:isdj', this.isDj ? this.user.id : ''); }
+      catch (e) { this.isDj = LS.get('kk:isdj', '') === this.user.id; }
+    }
     this.fns.forEach(f => f());
     if (this.isDj) cloudBook.pull().then(() => cloudBook.pushLocal()).catch(e => console.warn('Songbuch:', e.message));
   },
@@ -515,6 +519,8 @@ window.KK = {
   P, MOCK, LS, uid, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, CID, eventCode,
   bookList, bookFind, bookSetVid, bookAddCustom, bookRemoveCustom, bookData,
   initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
-  LocalStore, RemoteStore, dj, cloudBook, playStats
+  LocalStore, RemoteStore, dj, cloudBook, playStats,
+  // Mit Cloud-Songbuch darf nur der angemeldete DJ das Songbuch ändern
+  canEditBook: () => !cloud.url || MOCK || dj.isDj
 };
 })();

@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -32,6 +32,7 @@ const ico = n => h('span', { class: 'ico', html: '<svg viewBox="0 0 24 24" aria-
 const tImg = vid => isFile(vid) ? h('div', { class: 'noimg file' }, 'Datei') : h('img', { src: thumb(vid), alt: '', loading: 'lazy' });
 const mediaUrl = vid => isFile(vid) ? vid : 'https://www.youtube.com/watch?v=' + vid;
 let FILES = []; const filesReady = localVideos().then(l => { FILES = l; return l; });
+const songLine = e => e.t + (e.a ? ' · ' + e.a : '');
 const logo = cls => h('img', { class: 'logo ' + (cls || ''), src: 'assets/logo.svg', alt: 'DJ KOLJA ONE' });
 function toast(msg, kind) {
   if (!msg) return;
@@ -199,7 +200,7 @@ function Stage(root, store, opt) {
       key = k; clearTimeout(timer); clearInterval(timer);
       const kids = [];
       if (mode === 'applause') {
-        kids.push(h('div', { class: 'eyebrow' }, 'Applaus für'), h('h1', null, s.last.name), h('p', { class: 'sub' }, '„' + s.last.t + '“'));
+        kids.push(h('div', { class: 'eyebrow' }, 'Applaus für'), h('h1', null, s.last.name), h('p', { class: 'sub' }, songLine(s.last)));
         timer = setTimeout(() => render(store.state), s.last.at + 6600 - now);
       } else if (mode === 'idle') {
         kids.push(logo('big'), h('div', { class: 'eyebrow' }, 'Karaoke'),
@@ -228,15 +229,15 @@ function Stage(root, store, opt) {
       else if (hint.textContent && /tippen/.test(hint.textContent)) showHint('');
     }
     // Info-Leiste
-    const showBar = !opt.kiosk && S.bar;
+    const showBar = S.bar, applause = mode === 'applause';
     bar.classList.toggle('off', !showBar);
     if (showBar) {
-      const upcoming = s.queue.slice(0, 3).map(q => q.name).join('  ·  ');
-      put(bar, logo('mini'),
+      const upcoming = (applause && c ? [c] : []).concat(s.queue).slice(0, 3).map(q => q.name).join('  ·  ');
+      put(bar, opt.kiosk ? null : logo('mini'),
         h('div', { class: 'lines' },
-          h('div', { class: 'ln' }, h('b', null, 'Jetzt'), c ? h('span', null, c.name, h('em', null, '  ' + c.t)) : h('span', { class: 'mut' }, '–')),
+          h('div', { class: 'ln' }, h('b', null, applause ? 'Applaus' : 'Jetzt'), applause ? h('span', null, s.last.name, h('em', null, '  ' + songLine(s.last))) : c ? h('span', null, c.name, h('em', null, '  ' + songLine(c))) : h('span', { class: 'mut' }, '–')),
           h('div', { class: 'ln' }, S.ticker ? [h('b', null, 'Info'), h('span', null, S.ticker)] : [h('b', null, 'Danach'), h('span', { class: upcoming ? '' : 'mut' }, upcoming || (S.signupOpen ? T('Noch frei – traut euch.', 'Noch frei – trauen Sie sich.') : '–'))])),
-        gUrl && S.signupOpen ? h('div', { class: 'join' }, h('span', null, 'Mitsingen'), qrBox(gUrl, 'mini')) : null);
+        !opt.kiosk && gUrl && S.signupOpen ? h('div', { class: 'join' }, h('span', null, 'Mitsingen'), qrBox(gUrl, 'mini')) : null);
     }
   }
   return api;
@@ -448,7 +449,7 @@ function viewDJ(app, room) {
     inp.focus();
   }
   function resolve(e) {
-    pickVideo(store, { q: (e.a ? e.a + ' ' : '') + e.t, onPick: (vid, d) => { act('edit', { id: e.id, vid, dur: d }); if (e.sid && store.local) { bookSetVid(e.sid, vid, d); store.bookChanged(); } } });
+    pickVideo(store, { q: (e.a ? e.a + ' ' : '') + e.t, onPick: (vid, d) => { act('edit', { id: e.id, vid, dur: d }); if (e.sid && store.local && canEditBook()) { bookSetVid(e.sid, vid, d); store.bookChanged(); } } });
   }
   function editEntry(e) {
     const n = h('input', { class: 'in', value: e.name }), t = h('input', { class: 'in', value: e.t }), a = h('input', { class: 'in', value: e.a });
@@ -458,6 +459,7 @@ function viewDJ(app, room) {
   }
   function saveToBook(e) {
     if (!store.local) return toast('Das Songbuch wird am Hauptgerät gepflegt.');
+    if (!canEditBook()) return toast('Das Songbuch lässt sich nur als angemeldeter DJ ändern (Einstellungen → DJ-Anmeldung).', 'warn');
     const id = slug(e.a + '-' + e.t); if (bookFind(id)) bookSetVid(id, e.vid, e.dur); else bookAddCustom(e.t, e.a, e.vid, e.dur);
     store.bookChanged(); toast('Im Songbuch gespeichert.', 'good');
   }
@@ -594,20 +596,22 @@ function statsDlg() {
 
 // ============ Songbuch pflegen ============
 function songbookDlg(store) {
+  const tools = h('div', { class: 'stack' });
   const info = h('p', { class: 'mut' }), list = h('div', { class: 'list scroll tall' }), q = h('input', { class: 'in', type: 'search', placeholder: 'Filtern …' });
   const only = toggle('Nur Titel ohne Video', false, () => draw());
   const nIn = h('input', { class: 'in', type: 'number', value: 15, min: 1, max: 90, style: 'width:5.5em' });
   let busy = false;
   function draw() {
+    const ed = canEditBook(); tools.style.display = ed ? '' : 'none';
     const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked;
-    info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.' + (!cloud.url ? '' : dj.isDj ? ' Cloud-Songbuch aktiv: Änderungen gelten für alle Geräte.' + (cloudBook.err ? ' Letztes Speichern fehlgeschlagen: ' + cloudBook.err : '') : ' Nicht als DJ angemeldet: Änderungen bleiben auf diesem Gerät (Einstellungen → DJ-Anmeldung).');
+    info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.' + (!cloud.url ? '' : dj.isDj ? ' Cloud-Songbuch aktiv: Änderungen gelten für alle Geräte.' + (cloudBook.err ? ' Letztes Speichern fehlgeschlagen: ' + cloudBook.err : '') : ' Zum Ändern bitte als DJ anmelden (Einstellungen → DJ-Anmeldung).');
     put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has)).map(b => h('div', { class: 'qrow' },
       b.has ? tImg(b.vid) : h('div', { class: 'noimg' }, '–'),
       h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a + ' · ' + b.g)),
       b.has ? h('a', { class: 'btn ghost', href: mediaUrl(b.vid), target: '_blank', rel: 'noopener', title: 'Video prüfen' }, '↗') : null,
-      b.has ? h('button', { class: 'btn ghost icon', title: 'Zuordnung lösen', onclick: () => { bookSetVid(b.id, ''); store.bookChanged(); draw(); } }, ico('x')) : null,
-      b.id.slice(0, 2) === 'c-' ? h('button', { class: 'btn ghost', title: 'Eigenen Titel löschen', onclick: () => { bookRemoveCustom(b.id); store.bookChanged(); draw(); } }, 'Löschen') : null,
-      h('button', { class: 'btn' + (b.has ? '' : ' primary'), onclick: () => pickVideo(store, { q: b.a + ' ' + b.t, onPick: (vid, d) => { bookSetVid(b.id, vid, d); store.bookChanged(); draw(); } }) }, b.has ? 'Ändern' : 'Video wählen'))));
+      ed && b.has ? h('button', { class: 'btn ghost icon', title: 'Zuordnung lösen', onclick: () => { bookSetVid(b.id, ''); store.bookChanged(); draw(); } }, ico('x')) : null,
+      ed && b.id.slice(0, 2) === 'c-' ? h('button', { class: 'btn ghost', title: 'Eigenen Titel löschen', onclick: () => { bookRemoveCustom(b.id); store.bookChanged(); draw(); } }, 'Löschen') : null,
+      !ed ? null : h('button', { class: 'btn' + (b.has ? '' : ' primary'), onclick: () => pickVideo(store, { q: b.a + ' ' + b.t, onPick: (vid, d) => { bookSetVid(b.id, vid, d); store.bookChanged(); draw(); } }) }, b.has ? 'Ändern' : 'Video wählen'))));
   }
   async function auto() {
     if (busy) return; if (!store.canSearch()) return toast('Dafür wird der YouTube-API-Schlüssel benötigt (Einstellungen).', 'warn');
@@ -636,12 +640,12 @@ function songbookDlg(store) {
   const ct = h('input', { class: 'in', placeholder: 'Eigener Titel' }), ca = h('input', { class: 'in', placeholder: 'Interpret' });
   q.addEventListener('input', draw);
   cloudBook.pull().then(ch => { if (ch) draw(); }).catch(() => { });
-  modal('Songbuch', h('div', { class: 'stack' }, info,
-    h('div', { class: 'row wrap' }, q, only),
-    list,
+  put(tools,
     h('div', { class: 'row wrap' }, FILES.length ? h('button', { class: 'btn', onclick: matchFiles }, 'Eigene Dateien zuordnen (' + FILES.length + ')') : null, h('button', { class: 'btn', onclick: auto }, 'Automatisch zuordnen'), nIn, h('span', { class: 'mut' }, 'Titel pro Durchlauf (je Titel 1 Suche aus dem Tageskontingent)')),
     h('div', { class: 'row wrap' }, ct, ca, h('button', { class: 'btn', onclick: () => { if (!ct.value.trim()) return; bookAddCustom(clean(ct.value, 90), clean(ca.value, 60)); ct.value = ca.value = ''; store.bookChanged(); draw(); } }, 'Titel anlegen')),
-    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Exportieren'), h('button', { class: 'btn', onclick: () => file.click() }, 'Importieren'), file, h('span', { class: 'mut' }, 'So wandert das Songbuch vom Mac aufs iPad.'))), { wide: true });
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Exportieren'), h('button', { class: 'btn', onclick: () => file.click() }, 'Importieren'), file, h('span', { class: 'mut' }, cloud.url ? 'Als Sicherung – der Abgleich zwischen den Geräten läuft über die Cloud.' : 'So wandert das Songbuch vom Mac aufs iPad.')));
+  const off = () => { if (tools.isConnected) draw(); }; dj.on(off);
+  modal('Songbuch', h('div', { class: 'stack' }, info, h('div', { class: 'row wrap' }, q, only), list, tools), { wide: true });
   draw();
 }
 
@@ -684,7 +688,7 @@ function viewKiosk(app, room) {
 
   function render(s) {
     const c = s.current, T = (du, sie) => s.settings.formal ? sie : du;
-    put(nowLine, ...(c ? [h('span', { class: 'eyebrow' }, c.phase === 'intro' ? 'An der Reihe' : 'Jetzt singt'), h('b', null, c.name), h('span', { class: 'sa' }, c.t)] : [h('span', { class: 'eyebrow' }, 'Bühne frei'), h('span', { class: 'sa' }, T('Trag dich ein – du bist sofort dran.', 'Tragen Sie sich ein – Sie sind sofort an der Reihe.'))]));
+    put(nowLine, ...(c ? [h('span', { class: 'eyebrow' }, c.phase === 'intro' ? 'An der Reihe' : 'Jetzt singt'), h('b', null, c.name), h('span', { class: 'sa' }, songLine(c))] : [h('span', { class: 'eyebrow' }, 'Bühne frei'), h('span', { class: 'sa' }, T('Trag dich ein – du bist sofort dran.', 'Tragen Sie sich ein – Sie sind sofort an der Reihe.'))]));
     skip.style.display = c && c.phase === 'live' ? '' : 'none';
     put(qBox, h('h2', null, 'Danach ', h('span', { class: 'count' }, s.queue.length || '')),
       !s.queue.length ? h('p', { class: 'mut' }, 'Noch niemand – die Liste ist frei.') : h('div', { class: 'list' }, s.queue.map((e, i) => h('div', { class: 'qrow' }, h('span', { class: 'num' }, i + 1), entryLine(e),
