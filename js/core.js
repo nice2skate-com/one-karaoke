@@ -225,12 +225,16 @@ async function ytSearch(q) {
   LS.set('kk:sc', cache);
   return items;
 }
+// Titel eines Videos nachschlagen; erkennt nebenbei, ob der Kanal das Einbetten verbietet
 async function ytTitle(vid) {
-  const u = encodeURIComponent('https://www.youtube.com/watch?v=' + vid);
+  const u = encodeURIComponent('https://www.youtube.com/watch?v=' + vid); let blocked = false;
   for (const url of ['https://www.youtube.com/oembed?format=json&url=' + u, 'https://noembed.com/embed?url=' + u]) {
-    try { const r = await fetch(url); if (r.ok) { const j = await r.json(); if (j.title) return j.title; } } catch (e) { /* nächster Versuch */ }
+    try {
+      const r = await fetch(url); if (r.status === 401 || r.status === 403) { blocked = true; continue; }
+      if (r.ok) { const j = await r.json(); if (j.title) return { title: j.title, blocked: false }; if (/40[13]/.test(j.error || '')) blocked = true; }
+    } catch (e) { /* nächster Versuch */ }
   }
-  return '';
+  return { title: '', blocked };
 }
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Laden fehlgeschlagen: ' + src)); document.head.append(s); }); }
 let ytP;

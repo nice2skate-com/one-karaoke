@@ -252,7 +252,7 @@ function Picker(store, role) {
   sq.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
   // Link
   const lk = h('input', { class: 'in', placeholder: 'YouTube-Link einfügen' }), lt = h('input', { class: 'in', placeholder: 'Titel' }), la = h('input', { class: 'in', placeholder: 'Interpret (optional)' });
-  lk.addEventListener('input', async () => { const v = parseVid(lk.value); if (!v) return; const raw = await ytTitle(v); if (raw && !lt.value) { const c = cleanTitle(raw); lt.value = c.t; la.value = c.a; } });
+  lk.addEventListener('input', async () => { const v = parseVid(lk.value); if (!v) return; const info = await ytTitle(v); if (info.blocked) toast('Dieses Video erlaubt vermutlich kein Einbetten – bitte eine andere Karaoke-Version wählen.', 'warn'); if (info.title && !lt.value) { const c = cleanTitle(info.title); lt.value = c.t; la.value = c.a; } });
   // Freier Wunsch
   const wt = h('input', { class: 'in', placeholder: 'Titel' }), wa = h('input', { class: 'in', placeholder: 'Interpret' });
   const panes = {
