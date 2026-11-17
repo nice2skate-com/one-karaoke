@@ -3,7 +3,7 @@
 cd "$(dirname "$0")"
 PORT=8777
 URL="http://localhost:$PORT/"
-if command -v python3 >/dev/null 2>&1; then python3 -m http.server $PORT >/dev/null 2>&1 &
+if command -v python3 >/dev/null 2>&1; then python3 server.py $PORT >/dev/null 2>&1 &
 else ruby -run -e httpd . -p $PORT >/dev/null 2>&1 & fi
 SERVER=$!
 sleep 1

@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -29,6 +29,9 @@ const ICON = {
   video: 'M4 6h11a1 1 0 011 1v3l4-3v10l-4-3v3a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z', again: 'M12 5V2L7 6l5 4V7a5 5 0 11-5 5H5a7 7 0 107-7z'
 };
 const ico = n => h('span', { class: 'ico', html: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICON[n] + '"/></svg>' });
+const tImg = vid => isFile(vid) ? h('div', { class: 'noimg file' }, 'Datei') : h('img', { src: thumb(vid), alt: '', loading: 'lazy' });
+const mediaUrl = vid => isFile(vid) ? vid : 'https://www.youtube.com/watch?v=' + vid;
+let FILES = []; const filesReady = localVideos().then(l => { FILES = l; return l; });
 const logo = cls => h('img', { class: 'logo ' + (cls || ''), src: 'assets/logo.svg', alt: 'DJ KOLJA ONE' });
 function toast(msg, kind) {
   if (!msg) return;
@@ -60,7 +63,8 @@ function link(v, r, extra) {
 const isLocalhost = /^(localhost|127\.|\[::1\])/.test(location.hostname) || location.protocol === 'file:';
 function guestUrl(store) {
   if (!store.local || !cloud.on) return '';
-  if (isLocalhost && !BUS_TEST) return '';
+  const pubUrl = ((window.KK_CONFIG || {}).publicUrl || '').trim();
+  if (isLocalhost && !BUS_TEST) return pubUrl ? pubUrl.replace(/[?#].*$/, '') + '?v=g&r=' + store.room : '';
   return location.origin + link('g', store.room, BUS_TEST ? { remote: 1 } : null);
 }
 const qrCache = {};
@@ -76,30 +80,60 @@ function toggle(label, checked, onchange, help) {
 }
 
 // ============ Player ============
+// Eigene Videodatei – gleiche Schnittstelle wie der YouTube-Player
+class FilePlayer {
+  constructor(box, ev, controls) {
+    this.st = -1; const v = this.v = h('video', { class: 'filevid', playsInline: true, preload: 'auto', controls: !!controls }); v.style.display = 'none'; box.append(v);
+    const set = st => { this.st = st; ev.onStateChange({ data: st }); };
+    v.addEventListener('loadedmetadata', () => { if (this.st === -1) set(5); });
+    v.addEventListener('playing', () => set(1));
+    v.addEventListener('pause', () => { if (this.st === 1 && !v.ended) set(2); });
+    v.addEventListener('ended', () => set(0));
+    v.addEventListener('error', () => { if (v.getAttribute('src')) ev.onError({ data: 'Datei' }); });
+  }
+  show(b) { this.v.style.display = b ? '' : 'none'; }
+  cueVideoById(src) { this.st = -1; this.v.src = src; this.v.load(); }
+  playVideo() { const p = this.v.play(); if (p) p.catch(() => { }); }
+  pauseVideo() { this.v.pause(); }
+  stopVideo() { this.st = -1; this.v.pause(); this.v.removeAttribute('src'); this.v.load(); }
+  seekTo(t) { try { this.v.currentTime = t; } catch (e) { /* noch nicht geladen */ } }
+  setVolume(x) { this.v.volume = Math.max(0, Math.min(1, x / 100)); }
+  getCurrentTime() { return this.v.currentTime || 0; }
+  getDuration() { return isFinite(this.v.duration) ? this.v.duration : 0; }
+  getPlayerState() { return this.st; }
+}
 class Player {
   constructor(box, store, opt) {
-    this.store = store; this.opt = opt || {}; this.key = null; this.ready = false; this.seekN = null; this.wantSince = 0;
+    this.store = store; this.opt = opt || {}; this.key = null; this.p = null; this.yt = null; this.ytReady = false; this.waitingYT = false; this.seekN = null; this.wantSince = 0;
     this.blocked = false; this.live = false; this.onBlocked = () => { };
-    const slot = h('div'); box.append(slot);
+    const events = be => ({ onStateChange: e => { if (this.p === be()) this.onState(e.data); }, onError: e => { if (this.p === be()) this.report('error', e.data); } });
+    this.ytWrap = h('div'); const slot = h('div'); this.ytWrap.append(slot); box.append(this.ytWrap);
+    this.fp = new FilePlayer(box, events(() => this.fp), this.opt.controls);
     loadYT().then(YT => {
-      this.p = new YT.Player(slot, {
+      const ev = events(() => this.yt); ev.onReady = () => { this.ytReady = true; this.sync(this.store.state); };
+      this.yt = new YT.Player(slot, {
         width: '100%', height: '100%',
         playerVars: { autoplay: 0, controls: this.opt.controls ? 1 : 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3, fs: 0, disablekb: 1, hl: 'de', origin: location.origin },
-        events: { onReady: () => { this.ready = true; this.sync(this.store.state); }, onStateChange: e => this.onState(e.data), onError: e => this.report('error', e.data) }
+        events: ev
       });
     });
     store.on(s => this.sync(s));
     setInterval(() => this.tick(), 500);
   }
+  get ready() { return !this.waitingYT; }
   report(st, err) { this.store.dispatch('status', { st, err, key: this.key }, { from: 'player' }); }
   setBlocked(b) { if (b !== this.blocked) { this.blocked = b; this.onBlocked(b); } }
-  kick() { if (this.p && this.key && this.ready) this.p.playVideo(); }
+  kick() { if (this.p && this.key) this.p.playVideo(); }
   sync(s) {
-    if (!this.ready || !s) return;
-    const c = s.current, key = c && c.vid ? c.id + ':' + c.vid : null;
+    if (!s) return;
+    const c = s.current, key = c && c.vid ? c.id + ':' + c.vid : null, file = !!key && isFile(c.vid);
+    this.waitingYT = !!key && !file && !this.ytReady;
+    if (this.waitingYT) { if (this.p) { this.p.stopVideo(); this.p = null; this.key = null; this.fp.show(false); } return; }
     if (key !== this.key) {
+      if (this.p) this.p.stopVideo();
+      this.p = key ? (file ? this.fp : this.yt) : null; this.fp.show(file); this.ytWrap.style.display = file ? 'none' : '';
       this.key = key; this.live = false; this.seekN = s.play.seek ? s.play.seek.n : null; this.wantSince = 0; this.setBlocked(false);
-      if (key) this.p.cueVideoById(c.vid); else this.p.stopVideo();
+      if (key) this.p.cueVideoById(c.vid);
     }
     if (!key) return;
     this.p.setVolume(s.play.vol);
@@ -117,7 +151,7 @@ class Player {
   }
   tick() {
     this.store.alive({ t: 'alive', blocked: this.blocked, ready: this.ready });
-    if (!this.ready || !this.key) return;
+    if (!this.p || !this.key) return;
     const st = this.p.getPlayerState(), s = this.store.state;
     if (st === 1 || st === 2 || st === 3) this.store.tick({ t: 'tick', cur: this.p.getCurrentTime() || 0, dur: this.p.getDuration() || 0 });
     if (s.play.want === 'play' && st !== 1 && st !== 3 && this.wantSince && Date.now() - this.wantSince > 2500) this.setBlocked(true);
@@ -138,7 +172,7 @@ function Stage(root, store, opt) {
   function start() {
     api.player = new Player(vidBox, store, { controls: !!opt.kiosk });
     api.player.onBlocked = () => render(store.state);
-    setTimeout(() => { if (!api.player.ready) showHint('YouTube ist nicht erreichbar – bitte die Internetverbindung prüfen.'); }, 9000);
+    setTimeout(() => { if (!api.player.ready) showHint('YouTube ist nicht erreichbar – bitte die Internetverbindung prüfen.', 12000); }, 9000);
     store.on(render);
   }
   if (navigator.locks) navigator.locks.request('kk-player-' + store.room, { ifAvailable: true }, lock => {
@@ -212,24 +246,30 @@ function Stage(root, store, opt) {
 function pickVideo(store, o) {
   const qIn = h('input', { class: 'in', value: o.q || '', placeholder: 'Titel und Interpret' });
   const list = h('div', { class: 'list' });
-  const linkIn = h('input', { class: 'in', placeholder: 'YouTube-Link einfügen' });
+  const linkIn = h('input', { class: 'in', placeholder: 'YouTube-Link oder Adresse einer Videodatei' });
   const ytA = h('a', { class: 'btn', target: '_blank', rel: 'noopener' }, 'Auf YouTube suchen ↗');
   const setA = () => { ytA.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(qIn.value + ' karaoke'); }; setA(); qIn.addEventListener('input', setA);
   const pick = (vid, dur, title) => { m.close(); o.onPick(vid, dur || 0, title || ''); };
+  const localRows = () => {
+    const words = slug(qIn.value).split('-').filter(w => w.length > 2);
+    const hit = FILES.filter(f => { const n = slug(fileName(f)); return words.length && words.every(w => n.includes(w)); }).slice(0, 6);
+    return hit.map(f => h('div', { class: 'vrow' }, tImg(f), h('div', { class: 'grow' }, h('div', { class: 'st' }, fileName(f)), h('div', { class: 'sa' }, 'Eigene Datei')), h('button', { class: 'btn primary', onclick: () => pick(f, 0, '') }, 'Wählen')));
+  };
   async function run() {
-    if (!store.canSearch()) { put(list, h('p', { class: 'mut' }, 'Ohne YouTube-API-Schlüssel: auf YouTube suchen, Link kopieren und unten einfügen.')); return; }
-    put(list, h('p', { class: 'mut' }, 'Suche …'));
+    await filesReady; const own = store.local ? localRows() : [];
+    if (!store.canSearch()) { put(list, own, h('p', { class: 'mut' }, 'Ohne YouTube-API-Schlüssel: auf YouTube suchen, Link kopieren und unten einfügen.')); return; }
+    put(list, own, h('p', { class: 'mut' }, 'Suche …'));
     try {
       const items = await store.search(qIn.value);
-      put(list, ...(items.length ? items.map(i => h('div', { class: 'vrow' },
-        h('img', { src: thumb(i.vid), alt: '', loading: 'lazy' }),
+      put(list, own, ...(items.length ? items.map(i => h('div', { class: 'vrow' },
+        tImg(i.vid),
         h('div', { class: 'grow' }, h('div', { class: 'st' }, i.title), h('div', { class: 'sa' }, i.ch + (i.dur ? ' · ' + fmtDur(i.dur) : ''))),
-        h('a', { class: 'btn ghost', href: 'https://www.youtube.com/watch?v=' + i.vid, target: '_blank', rel: 'noopener', title: 'Vorab ansehen' }, '↗'),
+        h('a', { class: 'btn ghost', href: mediaUrl(i.vid), target: '_blank', rel: 'noopener', title: 'Vorab ansehen' }, '↗'),
         h('button', { class: 'btn primary', onclick: () => pick(i.vid, i.dur, i.title) }, 'Wählen'))) : [h('p', { class: 'mut' }, 'Nichts gefunden.')]));
-    } catch (e) { put(list, h('p', { class: 'warn' }, e.message)); }
+    } catch (e) { put(list, own, h('p', { class: 'warn' }, e.message)); }
   }
   qIn.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
-  const useLink = () => { const v = parseVid(linkIn.value); if (!v) return toast('Das ist kein gültiger YouTube-Link.', 'warn'); pick(v, 0, ''); };
+  const useLink = () => { const v = parseMedia(linkIn.value); if (!v) return toast('Das ist weder ein YouTube-Link noch eine Videodatei (https://….mp4).', 'warn'); pick(v, 0, ''); };
   linkIn.addEventListener('keydown', e => { if (e.key === 'Enter') useLink(); });
   const m = modal(o.title || 'Karaoke-Video wählen', h('div', { class: 'stack' },
     h('div', { class: 'row' }, qIn, h('button', { class: 'btn primary', onclick: run }, 'Suchen'), ytA),
@@ -252,15 +292,27 @@ function Picker(store, role) {
   const sq = h('input', { class: 'in', placeholder: 'Titel oder Interpret', type: 'search' }), slist = h('div', { class: 'list scroll' });
   sq.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
   // Link
-  const lk = h('input', { class: 'in', placeholder: 'YouTube-Link einfügen' }), lt = h('input', { class: 'in', placeholder: 'Titel' }), la = h('input', { class: 'in', placeholder: 'Interpret (optional)' });
-  lk.addEventListener('input', async () => { const v = parseVid(lk.value); if (!v) return; const info = await ytTitle(v); if (info.blocked) toast('Dieses Video erlaubt vermutlich kein Einbetten – bitte eine andere Karaoke-Version wählen.', 'warn'); if (info.title && !lt.value) { const c = cleanTitle(info.title); lt.value = c.t; la.value = c.a; } });
+  const lk = h('input', { class: 'in', placeholder: 'YouTube-Link oder https://….mp4' }), lt = h('input', { class: 'in', placeholder: 'Titel' }), la = h('input', { class: 'in', placeholder: 'Interpret (optional)' });
+  lk.addEventListener('input', async () => { const v = parseMedia(lk.value); if (!v) return; if (isFile(v)) { if (!lt.value) { const c = fileMeta(v); lt.value = c.t; la.value = c.a; } return; } const info = await ytTitle(v); if (info.blocked) toast('Dieses Video erlaubt vermutlich kein Einbetten – bitte eine andere Karaoke-Version wählen.', 'warn'); if (info.title && !lt.value) { const c = cleanTitle(info.title); lt.value = c.t; la.value = c.a; } });
+  // Eigene Dateien (Ordner "videos")
+  const fq = h('input', { class: 'in', placeholder: 'Dateien durchsuchen …', type: 'search' }), flist = h('div', { class: 'list scroll' });
+  let fsel = null;
+  function renderFiles() {
+    const q = slug(fq.value), rows = FILES.filter(f => !q || slug(fileName(f)).includes(q));
+    put(flist, rows.length ? rows.map(f => { const m = fileMeta(f), sel = fsel === f;
+      return h('div', { class: 'srow' + (sel ? ' sel' : ''), onclick: () => { fsel = sel ? null : f; renderFiles(); } }, h('div', { class: 'grow' }, h('div', { class: 'st' }, m.t), h('div', { class: 'sa' }, m.a || fileName(f))),
+        sel ? h('button', { class: 'btn primary', onclick: e => { e.stopPropagation(); add({ t: m.t, a: m.a, vid: f }, () => { fsel = null; renderFiles(); }); } }, 'Auf die Liste') : null); }) : h('p', { class: 'mut pad' }, 'Keine passende Datei.'));
+  }
+  fq.addEventListener('input', renderFiles);
+  filesReady.then(() => { renderFiles(); refresh(); });
   // Freier Wunsch
   const wt = h('input', { class: 'in', placeholder: 'Titel' }), wa = h('input', { class: 'in', placeholder: 'Interpret' });
   const panes = {
     book: h('div', { class: 'pane' }, bq, chips, blist),
+    files: h('div', { class: 'pane' }, fq, flist),
     search: h('div', { class: 'pane' }, h('div', { class: 'row' }, sq, h('button', { class: 'btn primary', onclick: runSearch }, 'Suchen')), slist),
     link: h('div', { class: 'pane stack' }, h('p', { class: 'mut' }, 'Karaoke-Version auf YouTube öffnen, Link kopieren, hier einfügen.'), lk, lt, la,
-      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { const v = parseVid(lk.value); if (!v) return toast('Das ist kein gültiger YouTube-Link.', 'warn'); if (!lt.value.trim()) return toast('Bitte einen Titel eintragen.', 'warn'); add({ t: lt.value, a: la.value, vid: v }, () => { lk.value = lt.value = la.value = ''; }); } }, 'Auf die Liste'),
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { const v = parseMedia(lk.value); if (!v) return toast('Das ist weder ein YouTube-Link noch eine Videodatei (https://….mp4).', 'warn'); if (!lt.value.trim()) return toast('Bitte einen Titel eintragen.', 'warn'); add({ t: lt.value, a: la.value, vid: v }, () => { lk.value = lt.value = la.value = ''; }); } }, 'Auf die Liste'),
         h('a', { class: 'btn', href: 'https://www.youtube.com/results?search_query=karaoke', target: '_blank', rel: 'noopener' }, 'YouTube öffnen ↗'))),
     wish: h('div', { class: 'pane stack' }, h('p', { class: 'mut' }, role === 'dj' ? 'Titel ohne Video vormerken – das Video lässt sich später zuordnen.' : T('Nicht im Songbuch? Schreib uns deinen Wunsch – der DJ sucht die passende Version.', 'Nicht im Songbuch? Nennen Sie uns Ihren Wunsch – der DJ sucht die passende Version.')),
       wt, wa, h('button', { class: 'btn primary', onclick: () => { if (!wt.value.trim()) return toast('Bitte einen Titel eintragen.', 'warn'); add({ t: wt.value, a: wa.value }, () => { wt.value = wa.value = ''; }); } }, role === 'dj' ? 'Vormerken' : 'Wunsch senden'))
@@ -281,6 +333,7 @@ function Picker(store, role) {
     const s = store.state, stageMode = !s || s.mode !== 'kiosk';
     const av = [['book', 'Songbuch']];
     if (role === 'dj' || searchOk()) av.push(['search', 'Suche']);
+    if (role === 'dj' && store.local && FILES.length) av.push(['files', 'Dateien']);
     if (role === 'dj') av.push(['link', 'Link']);
     if (stageMode && role !== 'kiosk') av.push(['wish', role === 'dj' ? 'Ohne Video' : 'Wunsch']);
     if (!av.some(a => a[0] === ui.tab)) ui.tab = 'book';
@@ -325,7 +378,7 @@ function Picker(store, role) {
     put(slist, ...(ui.res || []).map(i => {
       const sel = ui.rsel === i.vid;
       return h('div', { class: 'vrow' + (sel ? ' sel' : ''), onclick: () => { ui.rsel = sel ? null : i.vid; renderSearch(); } },
-        h('img', { src: thumb(i.vid), alt: '', loading: 'lazy' }),
+        tImg(i.vid),
         h('div', { class: 'grow' }, h('div', { class: 'st' }, i.title), h('div', { class: 'sa' }, i.ch + (i.dur ? ' · ' + fmtDur(i.dur) : ''))),
         sel ? h('button', { class: 'btn primary', onclick: e => { e.stopPropagation(); const c = cleanTitle(i.title); add({ t: c.t, a: c.a, vid: i.vid, dur: i.dur }); } }, 'Auf die Liste') : null);
     }));
@@ -333,7 +386,7 @@ function Picker(store, role) {
   let sig = '';
   function refresh() {
     renderTabs();
-    const s = store.state, k = [ui.tab, s && s.mode, s && s.settings.guestSearch, store.canSearch(), store.book().filter(b => b.has).length, store.book().length].join('|');
+    const s = store.state, k = [ui.tab, FILES.length, s && s.mode, s && s.settings.guestSearch, store.canSearch(), store.book().filter(b => b.has).length, store.book().length].join('|');
     if (k !== sig) { sig = k; renderBook(); renderSearch(); }
   }
   store.on(refresh);
@@ -417,11 +470,11 @@ function viewDJ(app, room) {
     // Jetzt
     const kids = [];
     if (c) {
-      kids.push(h('div', { class: 'nowhead' }, c.vid ? h('img', { src: thumb(c.vid), alt: '' }) : h('div', { class: 'noimg' }, 'ohne Video'),
+      kids.push(h('div', { class: 'nowhead' }, c.vid ? tImg(c.vid) : h('div', { class: 'noimg' }, 'ohne Video'),
         h('div', { class: 'grow' }, h('div', { class: 'eyebrow' }, s.now.st === 'playing' ? 'Läuft' : c.phase === 'intro' ? 'Angekündigt' : s.now.st === 'extern' ? 'Extern' : 'Pausiert'),
           h('div', { class: 'nm' }, c.name), h('div', { class: 'sa' }, c.t + (c.a ? ' · ' + c.a : ''))),
         ib('edit', 'Bearbeiten', () => editEntry(c))));
-      if (s.now.st === 'error') kids.push(h('div', { class: 'alert' }, 'Dieses Video lässt sich nicht einbetten (YouTube-Fehler ' + (s.now.err || '?') + ').', h('button', { class: 'btn primary', onclick: () => resolve(c) }, 'Anderes Video wählen')));
+      if (s.now.st === 'error') kids.push(h('div', { class: 'alert' }, isFile(c.vid) ? 'Die Videodatei lässt sich nicht abspielen (fehlt sie im Ordner „videos“, oder ist das Format unbekannt?).' : 'Dieses Video lässt sich nicht einbetten (YouTube-Fehler ' + (s.now.err || '?') + ').', h('button', { class: 'btn primary', onclick: () => resolve(c) }, 'Anderes Video wählen')));
       if (!c.vid) kids.push(h('div', { class: 'alert' }, 'Kein Video zugeordnet – entweder jetzt wählen oder extern abspielen (z. B. KaraFun).', h('button', { class: 'btn', onclick: () => resolve(c) }, 'Video wählen')));
     } else kids.push(h('div', { class: 'nowhead' }, h('div', { class: 'grow' }, h('div', { class: 'eyebrow' }, 'Bühne frei'), h('div', { class: 'sa' }, s.queue.length ? 'Als Nächstes: ' + s.queue[0].name + ' – ' + s.queue[0].t : 'Noch niemand auf der Liste.'))));
     put(nowBox, ...kids);
@@ -438,7 +491,7 @@ function viewDJ(app, room) {
     // Warteschlange
     qCount.textContent = s.queue.length || '';
     put(queueBox, s.queue.length ? h('div', { class: 'list' }, s.queue.map((e, i) => h('div', { class: 'qitem' },
-      h('div', { class: 'qmain' }, h('span', { class: 'num' }, i + 1), e.vid ? h('img', { src: thumb(e.vid), alt: '', loading: 'lazy' }) : h('button', { class: 'noimg btnlike', onclick: () => resolve(e), title: 'Video wählen' }, 'Video wählen'),
+      h('div', { class: 'qmain' }, h('span', { class: 'num' }, i + 1), e.vid ? tImg(e.vid) : h('button', { class: 'noimg btnlike', onclick: () => resolve(e), title: 'Video wählen' }, 'Video wählen'),
         entryLine(e), h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
       h('div', { class: 'qact' }, ib('top', 'Ganz nach vorn', () => act('top', { id: e.id })), ib('up', 'Nach oben', () => act('move', { id: e.id, d: -1 })), ib('down', 'Nach unten', () => act('move', { id: e.id, d: 1 })),
         ib('edit', 'Bearbeiten', () => editEntry(e)), ib('x', 'Entfernen', () => act('remove', { id: e.id })),
@@ -516,9 +569,9 @@ function songbookDlg(store) {
     const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked;
     info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.';
     put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has)).map(b => h('div', { class: 'qrow' },
-      b.has ? h('img', { src: thumb(b.vid), alt: '', loading: 'lazy' }) : h('div', { class: 'noimg' }, '–'),
+      b.has ? tImg(b.vid) : h('div', { class: 'noimg' }, '–'),
       h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a + ' · ' + b.g)),
-      b.has ? h('a', { class: 'btn ghost', href: 'https://www.youtube.com/watch?v=' + b.vid, target: '_blank', rel: 'noopener', title: 'Video prüfen' }, '↗') : null,
+      b.has ? h('a', { class: 'btn ghost', href: mediaUrl(b.vid), target: '_blank', rel: 'noopener', title: 'Video prüfen' }, '↗') : null,
       b.has ? h('button', { class: 'btn ghost icon', title: 'Zuordnung lösen', onclick: () => { bookSetVid(b.id, ''); store.bookChanged(); draw(); } }, ico('x')) : null,
       b.id.slice(0, 2) === 'c-' ? h('button', { class: 'btn ghost', title: 'Eigenen Titel löschen', onclick: () => { bookRemoveCustom(b.id); store.bookChanged(); draw(); } }, 'Löschen') : null,
       h('button', { class: 'btn' + (b.has ? '' : ' primary'), onclick: () => pickVideo(store, { q: b.a + ' ' + b.t, onPick: (vid, d) => { bookSetVid(b.id, vid, d); store.bookChanged(); draw(); } }) }, b.has ? 'Ändern' : 'Video wählen'))));
@@ -533,6 +586,15 @@ function songbookDlg(store) {
     }
     busy = false; store.bookChanged(); draw(); toast(n + ' Titel zugeordnet – bitte stichprobenartig prüfen.', 'good');
   }
+  function matchFiles() {
+    let n = 0;
+    for (const b of bookList().filter(x => !x.has)) {
+      const t = slug(b.t), a = slug(b.a).split('-')[0];
+      const f = FILES.find(x => { const m = slug(fileName(x)); return m.includes(t) && (!a || m.includes(a)); }) || FILES.find(x => slug(fileName(x)).includes(t));
+      if (f) { bookSetVid(b.id, f, 0); n++; }
+    }
+    store.bookChanged(); draw(); toast(n ? n + ' Titel mit eigenen Dateien verknüpft.' : 'Keine passenden Dateinamen gefunden.', n ? 'good' : 'warn');
+  }
   const exp = () => { const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(bookData(), null, 1)], { type: 'application/json' })), download: 'dj-kolja-one-songbuch.json' }); document.body.append(a); a.click(); a.remove(); };
   const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: async e => {
     try { const d = JSON.parse(await e.target.files[0].text()); const cur = bookData(); Object.assign(cur.vids, d.vids || {}); (d.custom || []).forEach(c => { if (!cur.custom.some(x => x.id === c.id)) cur.custom.push(c); }); LS.set('kk:book', cur); store.bookChanged(); draw(); toast('Songbuch importiert.', 'good'); }
@@ -543,7 +605,7 @@ function songbookDlg(store) {
   modal('Songbuch', h('div', { class: 'stack' }, info,
     h('div', { class: 'row wrap' }, q, only),
     list,
-    h('div', { class: 'row wrap' }, h('button', { class: 'btn', onclick: auto }, 'Automatisch zuordnen'), nIn, h('span', { class: 'mut' }, 'Titel pro Durchlauf (je Titel 1 Suche aus dem Tageskontingent)')),
+    h('div', { class: 'row wrap' }, FILES.length ? h('button', { class: 'btn', onclick: matchFiles }, 'Eigene Dateien zuordnen (' + FILES.length + ')') : null, h('button', { class: 'btn', onclick: auto }, 'Automatisch zuordnen'), nIn, h('span', { class: 'mut' }, 'Titel pro Durchlauf (je Titel 1 Suche aus dem Tageskontingent)')),
     h('div', { class: 'row wrap' }, ct, ca, h('button', { class: 'btn', onclick: () => { if (!ct.value.trim()) return; bookAddCustom(clean(ct.value, 90), clean(ca.value, 60)); ct.value = ca.value = ''; store.bookChanged(); draw(); } }, 'Titel anlegen')),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Exportieren'), h('button', { class: 'btn', onclick: () => file.click() }, 'Importieren'), file, h('span', { class: 'mut' }, 'So wandert das Songbuch vom Mac aufs iPad.'))), { wide: true });
   draw();

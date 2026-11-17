@@ -7,7 +7,10 @@
 //
 // Der YouTube-API-Key gehört NICHT hierher – er wird in der DJ-Konsole unter
 // "Einstellungen" eingetragen und bleibt nur auf dem jeweiligen Gerät gespeichert.
+// publicUrl: Internet-Adresse der App. Wird für den QR-Code gebraucht, wenn die App
+//   lokal auf dem Mac läuft (start-mac.command), z. B. um eigene Videodateien abzuspielen.
 window.KK_CONFIG = {
+  publicUrl: "https://one-karaoke.pages.dev/",
   supabaseUrl: "https://envdjwhktfgphcknsbho.supabase.co",
   supabaseKey: "sb_publishable_9YX_95S_MyoJEKhaKsFyXA_Ny8ggw_A"
 };

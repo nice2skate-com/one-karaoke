@@ -52,6 +52,15 @@ Auf dem **iPad** muss die App im Internet liegen (siehe 5.), weil das iPad keine
 
 **YouTube-API-Schlüssel anlegen:** console.cloud.google.com → Projekt anlegen → „YouTube Data API v3“ aktivieren → Anmeldedaten → API-Schlüssel erstellen → auf die Adresse der App beschränken (HTTP-Referrer).
 
+## 4a. Eigene Videodateien (ohne Internet, ohne Werbung)
+
+- Gekaufte Karaoke-Videos (MP4 oder WebM) in den Ordner **`videos`** neben der App legen. Dateiname am besten `Interpret - Titel.mp4`.
+- Die App über **`start-mac.command`** starten (nicht über die Internet-Adresse) – nur dann sieht sie den Ordner.
+- In der Konsole erscheint der Reiter **Dateien**. Im Songbuch verknüpft **„Eigene Dateien zuordnen“** passende Dateinamen automatisch mit den Titeln.
+- Der QR-Code für die Handy-Anmeldung funktioniert auch im lokalen Betrieb; er zeigt auf die Adresse aus `config.js` (`publicUrl`).
+- Alternativ lässt sich im Reiter **Link** die direkte https-Adresse einer Videodatei einfügen (z. B. vom eigenen Server).
+- Der Ordner `videos` ist von der Versionsverwaltung ausgenommen – die Dateien landen nicht im Internet.
+
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 
 Der Ordner ist eine statische Website. Geeignet ist jedes HTTPS-Hosting, z. B. ein Unterordner auf dem eigenen Webspace (`karaoke.deine-domain.de`), Netlify oder GitHub Pages. Den kompletten Ordnerinhalt hochladen – fertig.

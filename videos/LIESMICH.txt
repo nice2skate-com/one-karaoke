@@ -1,0 +1,9 @@
+Eigene Karaoke-Videos (MP4, WebM) hier ablegen.
+
+Dateiname am besten:  Interpret - Titel.mp4
+Dann erkennt die App Titel und Interpret von selbst und kann die Dateien
+dem Songbuch zuordnen (Konsole → Songbuch → "Eigene Dateien zuordnen").
+
+Die Dateien werden nur abgespielt, wenn die App lokal über start-mac.command
+gestartet wurde. Sie werden nicht ins Internet hochgeladen – der Ordner ist
+von der Versionsverwaltung ausgenommen.

@@ -69,8 +69,12 @@ function initState(room, mode) {
 const ok = (msg, extra) => Object.assign({ ok: true, msg }, extra);
 const fail = msg => ({ ok: false, msg });
 const VID_RE = /^[\w-]{11}$/;
+// Eigene Videodateien: Ordner "videos/" neben der App oder eine direkte https-Adresse
+const FILE_RE = /^(https:\/\/[^\s"'<>]{4,400}|videos\/[^"'<>]{1,240})\.(mp4|webm|m4v|mov)(\?[^\s"'<>]*)?$/i;
+const isFile = v => !!v && !VID_RE.test(v);
+const mediaOk = v => VID_RE.test(v || '') || FILE_RE.test(v || '');
 function mkEntry(x) {
-  return { id: uid(), name: clean(x.name, 28), t: clean(x.t, 90), a: clean(x.a, 60), vid: VID_RE.test(x.vid || '') ? x.vid : '', dur: Math.max(0, Math.min(3600, +x.dur || 0)), sid: clean(x.sid, 90), by: 'dj', ts: Date.now() };
+  return { id: uid(), name: clean(x.name, 28), t: clean(x.t, 90), a: clean(x.a, 60), vid: mediaOk(x.vid) ? x.vid : '', dur: Math.max(0, Math.min(3600, +x.dur || 0)), sid: clean(x.sid, 90), by: 'dj', ts: Date.now() };
 }
 function sungCount(s, name) { const n = lc(name); return s.history.filter(x => x.sung && lc(x.name) === n).length + (s.current && lc(s.current.name) === n ? 1 : 0); }
 function insertFair(s, e) {
@@ -108,6 +112,7 @@ function reduce(s, a, x, m) {
       const e = mkEntry(x);
       if (!e.name) return fail('Bitte einen Namen eintragen.');
       if (!e.t) return fail('Bitte einen Titel wählen.');
+      if (!dj && isFile(e.vid)) { e.vid = ''; e.dur = 0; } // Gäste dürfen keine fremden Dateien einschleusen
       if (e.sid && !e.vid) { const b = bookFind(e.sid); if (b && b.vid) { e.vid = b.vid; e.dur = b.dur; } }
       if (!dj) {
         if (!S.signupOpen) return fail('Die Anmeldung ist gerade geschlossen.');
@@ -133,7 +138,7 @@ function reduce(s, a, x, m) {
       if (x.name != null) e.name = clean(x.name, 28) || e.name;
       if (x.t != null) e.t = clean(x.t, 90) || e.t;
       if (x.a != null) e.a = clean(x.a, 60);
-      if (x.vid != null && (x.vid === '' || VID_RE.test(x.vid))) { e.vid = x.vid; e.dur = +x.dur || 0; if (e === s.current) { s.now = { st: 'idle' }; s.play.want = 'pause'; e.phase = 'intro'; } }
+      if (x.vid != null && (x.vid === '' || mediaOk(x.vid))) { e.vid = x.vid; e.dur = +x.dur || 0; if (e === s.current) { s.now = { st: 'idle' }; s.play.want = 'pause'; e.phase = 'intro'; } }
       return ok();
     }
     case 'stage': { if (s.current) finish(s, !!s.current.startedAt, false); return toStage(s, x.id) ? ok() : fail('Die Warteschlange ist leer.'); }
@@ -185,6 +190,21 @@ function waitMin(s, idx) { let sec = s.current ? 150 : 0; for (let i = 0; i < id
 function parseVid(str) {
   str = String(str || '').trim(); if (VID_RE.test(str)) return str;
   const m = str.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([\w-]{11})/); return m ? m[1] : '';
+}
+const parseMedia = str => parseVid(str) || (/^https:/i.test(String(str || '').trim()) && FILE_RE.test(String(str).trim()) ? String(str).trim() : '');
+const fileName = v => { try { return decodeURIComponent(String(v).split('?')[0].split('/').pop()); } catch (e) { return String(v); } };
+const fileMeta = v => cleanTitle(fileName(v).replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' '));
+let lvP;
+function localVideos() {
+  return lvP || (lvP = (async () => {
+    const ext = /\.(mp4|webm|m4v|mov)$/i;
+    try { const r = await fetch('videos/index.json', { cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) return j.filter(n => ext.test(n)).map(n => 'videos/' + encodeURI(n)); } } catch (e) { /* kein Verzeichnis */ }
+    try {
+      const r = await fetch('videos/', { cache: 'no-store' }); if (!r.ok) return [];
+      const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+      return [...doc.querySelectorAll('a[href]')].map(a => a.getAttribute('href')).filter(x => ext.test(x) && !/^(https?:|\/|\.\.)/.test(x)).map(x => 'videos/' + x).filter(x => FILE_RE.test(x));
+    } catch (e) { return []; }
+  })());
 }
 const thumb = vid => 'https://i.ytimg.com/vi/' + vid + '/mqdefault.jpg';
 function decodeEnt(s) { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; }
@@ -412,7 +432,7 @@ class RemoteStore {
 window.KK = {
   P, MOCK, LS, uid, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, CID, eventCode,
   bookList, bookFind, bookSetVid, bookAddCustom, bookRemoveCustom, bookData,
-  initState, reduce, pub, waitMin, parseVid, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
+  initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
   LocalStore, RemoteStore
 };
 })();
