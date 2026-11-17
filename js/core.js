@@ -33,7 +33,7 @@ function eventCode() { if (!cfg.code) { cfg.code = rndCode(4); saveCfg(); } retu
 const bookData = () => Object.assign({ vids: {}, custom: [] }, LS.get('kk:book', {}));
 function bookList() {
   const d = bookData();
-  const base = (window.KK_CATALOG || []).map(([t, a, g]) => ({ id: slug(a + '-' + t), t, a, g }));
+  const base = (window.KK_CATALOG || []).map(([t, a, g, top]) => ({ id: slug(a + '-' + t), t, a, g, top: !!top }));
   return base.concat(d.custom.map(c => Object.assign({ g: 'Eigene' }, c))).map(b => {
     const v = d.vids[b.id]; b.vid = v ? v.vid : ''; b.dur = v ? v.dur : 0; b.has = !!b.vid; return b;
   });
@@ -50,7 +50,7 @@ function bookRemoveCustom(id) { const d = bookData(); d.custom = d.custom.filter
 // kompakte Fassung für Gäste-Handys: Katalog liegt dort schon vor, es fehlen nur Eigene + "hat Video"
 function bookPub() { const d = bookData(); const l = bookList(); const n = (window.KK_CATALOG || []).length; return { m: l.slice(0, n).map(b => b.has ? 1 : 0).join(''), c: l.slice(n).map(b => ({ id: b.id, t: b.t, a: b.a, g: b.g, has: b.has })) }; }
 function bookFromPub(p) {
-  const base = (window.KK_CATALOG || []).map(([t, a, g], i) => ({ id: slug(a + '-' + t), t, a, g, vid: '', dur: 0, has: !!p && p.m[i] === '1' }));
+  const base = (window.KK_CATALOG || []).map(([t, a, g, top], i) => ({ id: slug(a + '-' + t), t, a, g, top: !!top, vid: '', dur: 0, has: !!p && p.m[i] === '1' }));
   return base.concat(((p && p.c) || []).map(c => Object.assign({ vid: '', dur: 0 }, c)));
 }
 

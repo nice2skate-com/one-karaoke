@@ -343,11 +343,11 @@ function Picker(store, role) {
   function renderBook() {
     const s = store.state, kiosk = s && s.mode === 'kiosk';
     let list = store.book(); if (kiosk && !searchOk()) list = list.filter(b => b.has);
-    const genres = [...new Set(list.map(b => b.g))];
+    const TOP = 'Top 100', genres = (list.some(b => b.top) ? [TOP] : []).concat([...new Set(list.map(b => b.g))]);
     if (ui.g && !genres.includes(ui.g)) ui.g = '';
     put(chips, ...[''].concat(genres).map(g => h('button', { class: 'chip' + (ui.g === g ? ' on' : ''), onclick: () => { ui.g = g; renderBook(); } }, g || 'Alle')));
     const q = slug(bq.value);
-    const rows = list.filter(b => (!ui.g || b.g === ui.g) && (!q || slug(b.t + ' ' + b.a).includes(q)));
+    const rows = list.filter(b => (!ui.g || (ui.g === TOP ? b.top : b.g === ui.g)) && (!q || slug(b.t + ' ' + b.a).includes(q)));
     put(blist, ...(rows.length ? rows.map(b => {
       const sel = ui.sel === b.id;
       return h('div', { class: 'srow' + (sel ? ' sel' : ''), onclick: () => { ui.sel = sel ? null : b.id; renderBook(); } },
