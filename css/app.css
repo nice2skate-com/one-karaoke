@@ -10,7 +10,7 @@
   --line: rgba(244, 240, 232, .10); --line2: rgba(244, 240, 232, .18); --raise: #212529; --r: 14px;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; color-scheme: dark; }
 body { margin: 0; background: var(--anthracite); color: var(--offwhite); font: 400 16px/1.45 "Fira Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 body.dark-full { background: #000; overflow: hidden; }
 h1, h2, h3, h4, p { margin: 0; }
