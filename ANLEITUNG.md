@@ -79,6 +79,14 @@ Dafür tauschen die Geräte Nachrichten über Supabase Realtime aus (kostenloser
 
 Ohne Cloud funktioniert alles andere unverändert; die Gäste melden sich dann am Pult bzw. am Kiosk an.
 
+## 6a. DJ-Anmeldung, Cloud-Songbuch und Statistik
+
+- **Anmelden:** Konsole → Einstellungen → DJ-Anmeldung. Beim ersten Mal „Konto anlegen“, den Link in der Bestätigungs-E-Mail anklicken, danach anmelden. Das erste Konto wird automatisch DJ; weitere Konten haben keine Schreibrechte.
+- **Cloud-Songbuch:** Als angemeldeter DJ gelten Video-Zuordnungen und eigene Titel für alle Geräte. Lesen kann jedes Gerät ohne Anmeldung, ändern nur der DJ. Was vorher nur lokal gespeichert war, wird beim Anmelden hochgeladen.
+- **Statistik:** Knopf „Statistik“ in der Konsole. Gezählt wird jeder zu Ende gesungene oder nach dem Start beendete Titel – nur auf Geräten, an denen der DJ angemeldet ist, und ohne Namen der Gäste.
+- **Eigene Dateien:** In der Cloud steht nur der Dateiname. Abspielen lässt sich die Datei nur dort, wo sie im Ordner `videos` liegt.
+- **Kiosk-iPad:** Für die Statistik auch dort einmal anmelden (fünfmal aufs Logo → PIN → Einstellungen).
+
 ## 7. Einstellungen im Überblick
 
 | Einstellung | Wirkung |

@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -511,6 +511,7 @@ function viewDJ(app, room) {
     h('header', { class: 'top' }, h('a', { href: link('') }, logo()), h('div', { class: 'grow' }, roomName, badge),
       store.local ? h('button', { class: 'btn', onclick: openStage }, 'Bühnenbild öffnen') : null,
       store.local ? h('button', { class: 'btn', onclick: () => songbookDlg(store) }, 'Songbuch') : null,
+      store.local && cloud.url ? h('button', { class: 'btn', onclick: statsDlg }, 'Statistik') : null,
       h('button', { class: 'btn', onclick: () => settingsDlg(store) }, 'Einstellungen')),
     h('main', { class: 'cols' },
       h('section', { class: 'panel' }, h('h2', null, 'Song aufnehmen'), Picker(store, 'dj')),
@@ -545,6 +546,20 @@ function settingsDlg(store) {
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => confirmDlg('Warteschlange und offene Wünsche leeren?', 'Leeren', () => store.dispatch('clear', { what: 'queue' })) }, 'Warteschlange leeren'),
       h('button', { class: 'btn', onclick: () => confirmDlg('Alles zurücksetzen – Warteschlange, Verlauf und laufenden Song?', 'Zurücksetzen', () => store.dispatch('clear', { what: 'all' })) }, 'Neuer Abend'))
   ];
+  if (store.local && cloud.url) {
+    const box = h('div', { class: 'stack' });
+    const email = h('input', { class: 'in', type: 'email', placeholder: 'E-Mail', autocomplete: 'username' }), pw = h('input', { class: 'in', type: 'password', placeholder: 'Passwort (mindestens 8 Zeichen)', autocomplete: 'current-password' });
+    const run = (fn, okMsg) => async () => { if (!email.value.trim() || !pw.value) return toast('Bitte E-Mail und Passwort eintragen.', 'warn'); try { const r = await fn(email.value.trim(), pw.value); toast(r === 'confirm' ? 'Fast geschafft: Bitte den Link in der Bestätigungs-E-Mail anklicken und danach hier anmelden.' : okMsg, 'good'); } catch (e) { toast(e.message, 'warn'); } };
+    const draw = () => { if (!box.isConnected && box.dataset.drawn) return; box.dataset.drawn = '1';
+      put(box, dj.user ? [h('p', null, 'Angemeldet als ', h('b', null, dj.user.email), dj.isDj ? ' · DJ-Rechte aktiv' : ' · ohne DJ-Rechte'),
+        h('p', { class: 'mut' }, dj.isDj ? 'Änderungen am Songbuch gelten für alle Geräte, und gesungene Titel fließen in die Statistik ein.' : 'Dieses Konto ist nicht als DJ freigeschaltet. Das Songbuch lässt sich damit nicht ändern.'),
+        h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => dj.signOut() }, 'Abmelden'))]
+        : [h('p', { class: 'mut' }, 'Mit Anmeldung wird das Songbuch in der Cloud gepflegt und gilt auf allen Geräten; gesungene Titel werden für die Statistik gezählt. Ohne Anmeldung bleibt alles wie bisher auf diesem Gerät.'),
+          email, pw, h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', onclick: run((e, p) => dj.signIn(e, p), 'Angemeldet.') }, 'Anmelden'), h('button', { class: 'btn', onclick: run((e, p) => dj.signUp(e, p), 'Konto angelegt und angemeldet.') }, 'Konto anlegen'))]);
+    };
+    dj.on(draw); draw();
+    kids.push(h('h4', null, 'DJ-Anmeldung'), box);
+  }
   if (store.local) {
     kids.push(h('h4', null, 'YouTube'),
       field('YouTube-API-Schlüssel (nur auf diesem Gerät gespeichert)', inp(cfg.ytKey, v => { cfg.ytKey = v; saveCfg(); store.dispatch('set', {}); toast(v ? 'Schlüssel gespeichert.' : 'Schlüssel entfernt.'); }, { type: 'password', autocomplete: 'off' }),
@@ -559,6 +574,24 @@ function settingsDlg(store) {
   modal('Einstellungen', h('div', { class: 'stack settings' }, kids), { wide: true });
 }
 
+// ============ Statistik ============
+function statsDlg() {
+  const body = h('div', { class: 'stack' }), list = h('div', { class: 'list scroll tall' }), info = h('p', { class: 'mut' });
+  let days = 0;
+  const tabs = h('div', { class: 'chips' });
+  async function load() {
+    put(tabs, [[0, 'Gesamt'], [365, '12 Monate'], [30, '30 Tage'], [1, 'Heute']].map(([d, l]) => h('button', { class: 'chip' + (days === d ? ' on' : ''), onclick: () => { days = d; load(); } }, l)));
+    if (!dj.isDj) { info.textContent = 'Die Statistik ist nur mit DJ-Anmeldung sichtbar (Einstellungen → DJ-Anmeldung).'; put(list); return; }
+    info.textContent = 'Lade …';
+    try {
+      const r = await playStats(days);
+      info.textContent = r.total ? r.total + ' gesungene Titel, ' + r.rows.length + ' verschiedene. Gezählt wird auf Geräten, an denen ein DJ angemeldet ist – ohne Namen der Gäste.' : 'Noch keine Einträge in diesem Zeitraum.';
+      put(list, r.rows.map((x, i) => h('div', { class: 'qrow' }, h('span', { class: 'num' }, i + 1), h('div', { class: 'grow' }, h('div', { class: 'st' }, x.title), h('div', { class: 'sa' }, x.artist)), h('b', null, x.n + '×'))));
+    } catch (e) { info.textContent = 'Die Statistik konnte nicht geladen werden: ' + e.message; }
+  }
+  body.append(tabs, info, list); modal('Statistik', body, { wide: true }); load();
+}
+
 // ============ Songbuch pflegen ============
 function songbookDlg(store) {
   const info = h('p', { class: 'mut' }), list = h('div', { class: 'list scroll tall' }), q = h('input', { class: 'in', type: 'search', placeholder: 'Filtern …' });
@@ -567,7 +600,7 @@ function songbookDlg(store) {
   let busy = false;
   function draw() {
     const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked;
-    info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.';
+    info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.' + (!cloud.url ? '' : dj.isDj ? ' Cloud-Songbuch aktiv: Änderungen gelten für alle Geräte.' + (cloudBook.err ? ' Letztes Speichern fehlgeschlagen: ' + cloudBook.err : '') : ' Nicht als DJ angemeldet: Änderungen bleiben auf diesem Gerät (Einstellungen → DJ-Anmeldung).');
     put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has)).map(b => h('div', { class: 'qrow' },
       b.has ? tImg(b.vid) : h('div', { class: 'noimg' }, '–'),
       h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a + ' · ' + b.g)),
@@ -602,6 +635,7 @@ function songbookDlg(store) {
   } });
   const ct = h('input', { class: 'in', placeholder: 'Eigener Titel' }), ca = h('input', { class: 'in', placeholder: 'Interpret' });
   q.addEventListener('input', draw);
+  cloudBook.pull().then(ch => { if (ch) draw(); }).catch(() => { });
   modal('Songbuch', h('div', { class: 'stack' }, info,
     h('div', { class: 'row wrap' }, q, only),
     list,
@@ -718,6 +752,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const app = $('#app');
   const room = (P.get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
   document.body.classList.add('v-' + VIEW);
+  if (VIEW === 'dj' || VIEW === 'stage' || VIEW === 'kiosk') { dj.init(); cloudBook.pull().catch(() => { }); }
   if (VIEW === 'dj') viewDJ(app, room || eventCode() + 'M');
   else if (VIEW === 'stage') viewStage(app, room || eventCode() + 'M');
   else if (VIEW === 'kiosk') viewKiosk(app, room || eventCode() + 'N');

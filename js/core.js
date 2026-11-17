@@ -39,14 +39,14 @@ function bookList() {
   });
 }
 const bookFind = id => bookList().find(b => b.id === id);
-function bookSetVid(id, vid, dur) { const d = bookData(); if (vid) d.vids[id] = { vid, dur: dur || 0 }; else delete d.vids[id]; LS.set('kk:book', d); }
+function bookSetVid(id, vid, dur) { const d = bookData(); if (vid) d.vids[id] = { vid, dur: dur || 0 }; else delete d.vids[id]; LS.set('kk:book', d); cloudBook.save(id); }
 function bookAddCustom(t, a, vid, dur) {
   const d = bookData(); const id = 'c-' + slug(a + '-' + t);
   if (!d.custom.some(c => c.id === id) && !(window.KK_CATALOG || []).some(([ct, ca]) => slug(ca + '-' + ct) === id.slice(2))) d.custom.push({ id, t, a });
   if (vid) d.vids[id] = { vid, dur: dur || 0 };
-  LS.set('kk:book', d); return id;
+  LS.set('kk:book', d); cloudBook.save(id); return id;
 }
-function bookRemoveCustom(id) { const d = bookData(); d.custom = d.custom.filter(c => c.id !== id); delete d.vids[id]; LS.set('kk:book', d); }
+function bookRemoveCustom(id) { const d = bookData(); d.custom = d.custom.filter(c => c.id !== id); delete d.vids[id]; LS.set('kk:book', d); cloudBook.save(id, true); }
 // kompakte Fassung für Gäste-Handys: Katalog liegt dort schon vor, es fehlen nur Eigene + "hat Video"
 function bookPub() { const d = bookData(); const l = bookList(); const n = (window.KK_CATALOG || []).length; return { m: l.slice(0, n).map(b => b.has ? 1 : 0).join(''), c: l.slice(n).map(b => ({ id: b.id, t: b.t, a: b.a, g: b.g, has: b.has })) }; }
 function bookFromPub(p) {
@@ -300,8 +300,7 @@ async function makeBus(room) {
     bc.onmessage = e => fns.forEach(f => f(e.data)); bus.send = m => bc.postMessage(m); setUp(true); return bus;
   }
   if (!cloud.on) throw new Error('Cloud nicht eingerichtet');
-  if (!window.supabase) await loadScript('vendor/supabase.js');
-  const client = window.supabase.createClient(cloud.url, cloud.key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const client = await sb();
   const ch = client.channel('kk-' + room, { config: { broadcast: { self: false } } });
   ch.on('broadcast', { event: 'm' }, p => fns.forEach(f => f(p.payload)));
   bus.send = m => { ch.send({ type: 'broadcast', event: 'm', payload: m }); };
@@ -313,6 +312,87 @@ async function makeBus(room) {
   return bus;
 }
 
+// ---------- Cloud: gemeinsamer Zugang, DJ-Anmeldung, Songbuch, Statistik ----------
+let sbP;
+function sb() {
+  return sbP || (sbP = (async () => {
+    if (!cloud.url || !cloud.key) throw new Error('Cloud nicht eingerichtet');
+    if (!window.supabase) await loadScript('vendor/supabase.js');
+    return window.supabase.createClient(cloud.url, cloud.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'kk:auth' } });
+  })());
+}
+const authMsg = e => { const m = (e && e.message) || 'Unbekannter Fehler'; return /invalid login/i.test(m) ? 'E-Mail oder Passwort stimmt nicht.' : /not confirmed/i.test(m) ? 'Bitte zuerst den Link in der Bestätigungs-E-Mail anklicken.' : /already registered/i.test(m) ? 'Für diese E-Mail gibt es schon ein Konto – bitte anmelden.' : /at least|weak|password/i.test(m) ? 'Das Passwort ist zu kurz oder zu einfach (mindestens 8 Zeichen).' : /rate limit|too many/i.test(m) ? 'Zu viele Versuche – bitte ein paar Minuten warten.' : m; };
+const dj = {
+  user: null, isDj: false, ready: false, fns: [],
+  on(f) { this.fns.push(f); },
+  async init() { if (!cloud.url || MOCK) { this.ready = true; return; } try { const c = await sb(); const { data } = await c.auth.getSession(); await this.apply(data.session);
+      // An- und Abmelden in einem anderen Fenster (z. B. Konsole) gilt auch hier (z. B. Bühnenbild)
+      c.auth.onAuthStateChange((ev, session) => { setTimeout(() => { if (((session && session.user && session.user.id) || null) !== ((this.user && this.user.id) || null)) this.apply(session); }, 0); }); } catch (e) { console.warn('Anmeldung:', e.message); } this.ready = true; this.fns.forEach(f => f()); },
+  async apply(session) {
+    this.user = session ? session.user : null; this.isDj = false;
+    if (this.user) { try { const c = await sb(); const r = await c.rpc('claim_dj'); this.isDj = r.data === true; } catch (e) { /* offline */ } }
+    this.fns.forEach(f => f());
+    if (this.isDj) cloudBook.pull().then(() => cloudBook.pushLocal()).catch(e => console.warn('Songbuch:', e.message));
+  },
+  async signIn(email, pw) { const c = await sb(); const { data, error } = await c.auth.signInWithPassword({ email, password: pw }); if (error) throw new Error(authMsg(error)); await this.apply(data.session); },
+  async signUp(email, pw) { const c = await sb(); const { data, error } = await c.auth.signUp({ email, password: pw }); if (error) throw new Error(authMsg(error)); if (data.session) { await this.apply(data.session); return 'in'; } return 'confirm'; },
+  async signOut() { const c = await sb(); await c.auth.signOut(); await this.apply(null); }
+};
+const bookFns = [];
+const cloudBook = {
+  err: '',
+  row(id, removed) {
+    const d = bookData(), c = d.custom.find(x => x.id === id), b = bookFind(id), v = d.vids[id];
+    return { id, title: (c && c.t) || (b && b.t) || '', artist: (c && c.a) || (b && b.a) || '', genre: (c && c.g) || (b && b.g) || '', vid: v ? v.vid : '', dur: v ? Math.round(v.dur || 0) : 0, custom: !!c, deleted: !!removed, updated_at: new Date().toISOString() };
+  },
+  // Cloud-Stand holen; was dort steht, gilt
+  async pull() {
+    if (!cloud.url || MOCK) return false;
+    const c = await sb(); const { data, error } = await c.from('songbook').select('id,title,artist,genre,vid,dur,custom,deleted').limit(5000);
+    if (error) { this.err = error.message; throw new Error(error.message); }
+    this.err = '';
+    const d = bookData(), before = JSON.stringify(d);
+    for (const r of data) {
+      d.custom = d.custom.filter(x => x.id !== r.id);
+      if (r.deleted) { delete d.vids[r.id]; continue; }
+      if (r.custom) d.custom.push({ id: r.id, t: r.title, a: r.artist, g: r.genre || 'Eigene' });
+      if (r.vid && mediaOk(r.vid)) d.vids[r.id] = { vid: r.vid, dur: r.dur || 0 }; else delete d.vids[r.id];
+    }
+    LS.set('kk:cloudids', data.map(r => r.id));
+    const changed = JSON.stringify(d) !== before;
+    if (changed) { LS.set('kk:book', d); bookFns.forEach(f => f()); }
+    return changed;
+  },
+  // Was nur auf diesem Gerät liegt, in die Cloud übernehmen (nur als DJ)
+  async pushLocal() {
+    if (!dj.isDj) return 0;
+    const known = new Set(LS.get('kk:cloudids', [])), d = bookData();
+    const ids = [...new Set(Object.keys(d.vids).concat(d.custom.map(c => c.id)))].filter(id => !known.has(id));
+    if (!ids.length) return 0;
+    const c = await sb(); const { error } = await c.from('songbook').upsert(ids.map(id => this.row(id)));
+    if (error) throw new Error(error.message);
+    LS.set('kk:cloudids', [...known, ...ids]); return ids.length;
+  },
+  save(id, removed) {
+    if (!dj.isDj) return;
+    sb().then(c => c.from('songbook').upsert(this.row(id, removed))).then(r => { if (r.error) throw new Error(r.error.message); const k = LS.get('kk:cloudids', []); if (!k.includes(id)) { k.push(id); LS.set('kk:cloudids', k); } this.err = ''; })
+      .catch(e => { this.err = e.message; console.warn('Songbuch speichern:', e.message); });
+  }
+};
+function logPlay(e, room) {
+  if (MOCK || !dj.isDj) return;
+  sb().then(c => c.from('plays').insert({ song_id: clean(e.sid || slug(e.a + '-' + e.t), 200), title: clean(e.t, 120), artist: clean(e.a, 120), room: clean(room, 60), source: !e.vid ? 'extern' : isFile(e.vid) ? 'datei' : 'youtube' }))
+    .then(r => { if (r.error) console.warn('Statistik:', r.error.message); }).catch(() => { });
+}
+async function playStats(days) {
+  const c = await sb(); let q = c.from('plays').select('song_id,title,artist,sung_at').order('sung_at', { ascending: false }).limit(10000);
+  if (days) q = q.gte('sung_at', new Date(Date.now() - days * 864e5).toISOString());
+  const { data, error } = await q; if (error) throw new Error(error.message);
+  const map = {};
+  for (const r of data) { const m = map[r.song_id] || (map[r.song_id] = { title: r.title, artist: r.artist, n: 0, last: r.sung_at }); m.n++; }
+  return { total: data.length, rows: Object.values(map).sort((a, b) => b.n - a.n || a.title.localeCompare(b.title)) };
+}
+
 // ---------- Stores ----------
 class LocalStore {
   constructor(room, mode, meta) {
@@ -320,6 +400,7 @@ class LocalStore {
     this.fns = []; this.tickFns = []; this.aliveFns = []; this.connFns = []; this.conn = 'off';
     this.state = LS.get(this.key); if (!this.state) { this.state = initState(room, mode); LS.set(this.key, this.state); }
     this.bc = new BroadcastChannel('kk:' + room);
+    bookFns.push(() => this.bookChanged());
     this.bc.onmessage = e => {
       const m = e.data;
       if (m.t === 'state') { this.state = LS.get(this.key) || this.state; this.emit(); }
@@ -334,8 +415,9 @@ class LocalStore {
   setConn(c) { this.conn = c; this.connFns.forEach(f => f(c)); }
   emit() { this.fns.forEach(f => { try { f(this.state); } catch (e) { console.error(e); } }); }
   dispatch(a, x, meta) {
-    const s = LS.get(this.key) || this.state;
+    const s = LS.get(this.key) || this.state, h0 = s.history[0] && s.history[0].id;
     const r = reduce(s, a, x, Object.assign({}, meta || this.meta)) || ok();
+    if (r.ok && s.history[0] && s.history[0].id !== h0 && s.history[0].sung) logPlay(s.history[0], s.name);
     if (r.ok) { s.rev++; LS.set(this.key, s); this.state = s; this.bc.postMessage({ t: 'state' }); this.emit(); }
     return Promise.resolve(r);
   }
@@ -433,6 +515,6 @@ window.KK = {
   P, MOCK, LS, uid, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, CID, eventCode,
   bookList, bookFind, bookSetVid, bookAddCustom, bookRemoveCustom, bookData,
   initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
-  LocalStore, RemoteStore
+  LocalStore, RemoteStore, dj, cloudBook, playStats
 };
 })();
