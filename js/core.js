@@ -231,7 +231,8 @@ async function ytSearch(q) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       const reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
-      throw new Error(reason === 'quotaExceeded' ? 'Das YouTube-Tageskontingent ist aufgebraucht. Bitte Songbuch oder Link nutzen.' : 'YouTube-Suche fehlgeschlagen' + (j.error ? ': ' + j.error.message : '.'));
+      const quota = /quota|rateLimit|dailyLimit/i.test(reason || '') || /quota/i.test((j.error && j.error.message) || '');
+      throw new Error(quota ? 'Das YouTube-Tageskontingent ist aufgebraucht. Bitte Songbuch oder Link nutzen – ab etwa 9 Uhr morgens geht die Suche wieder.' : 'YouTube-Suche fehlgeschlagen' + (j.error ? ': ' + j.error.message : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
     }
     items = (j.items || []).filter(i => i.id && i.id.videoId).map(i => ({ vid: i.id.videoId, title: decodeEnt(i.snippet.title), ch: decodeEnt(i.snippet.channelTitle), dur: 0 }));
     try {

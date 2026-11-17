@@ -621,7 +621,7 @@ function songbookDlg(store) {
       info.textContent = 'Ordne zu: ' + b.t + ' …';
       try { const r = await store.search(b.a + ' ' + b.t); if (r[0]) { bookSetVid(b.id, r[0].vid, r[0].dur); n++; } } catch (e) { toast(e.message, 'warn'); break; }
     }
-    busy = false; store.bookChanged(); draw(); toast(n + ' Titel zugeordnet – bitte stichprobenartig prüfen.', 'good');
+    busy = false; store.bookChanged(); draw(); if (n) toast(n + ' Titel zugeordnet – bitte stichprobenartig prüfen.', 'good');
   }
   function matchFiles() {
     let n = 0;
