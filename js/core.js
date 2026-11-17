@@ -231,8 +231,8 @@ async function ytSearch(q) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       const reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
-      const quota = /quota|rateLimit|dailyLimit/i.test(reason || '') || /quota/i.test((j.error && j.error.message) || '');
-      throw new Error(quota ? 'Das YouTube-Tageskontingent ist aufgebraucht. Bitte Songbuch oder Link nutzen – ab etwa 9 Uhr morgens geht die Suche wieder.' : 'YouTube-Suche fehlgeschlagen' + (j.error ? ': ' + j.error.message : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
+      const quota = /quota|rateLimit|dailyLimit/i.test(reason || '') || /quota|permission denied on the service/i.test((j.error && j.error.message) || ''); // Google meldet das aufgebrauchte Suchkontingent als 403 "Permission denied on the service"
+      throw new Error(quota ? 'Das YouTube-Tageskontingent (100 Suchen) ist vermutlich aufgebraucht. Bitte Songbuch oder Link nutzen – ab etwa 9 Uhr morgens geht die Suche wieder.' : 'YouTube-Suche fehlgeschlagen' + (j.error ? ': ' + j.error.message : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
     }
     items = (j.items || []).filter(i => i.id && i.id.videoId).map(i => ({ vid: i.id.videoId, title: decodeEnt(i.snippet.title), ch: decodeEnt(i.snippet.channelTitle), dur: 0 }));
     try {
