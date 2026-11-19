@@ -227,7 +227,9 @@ async function ytSearch(q) {
     if (!cfg.ytKey) throw new Error('Kein YouTube-API-Schlüssel hinterlegt.');
     const term = /karaoke/i.test(q) ? q : q + ' karaoke';
     const base = 'https://www.googleapis.com/youtube/v3/';
-    const r = await fetch(base + 'search?part=snippet&type=video&videoEmbeddable=true&safeSearch=none&maxResults=10&q=' + encodeURIComponent(term) + '&key=' + encodeURIComponent(cfg.ytKey));
+    let r;
+    try { r = await fetch(base + 'search?part=snippet&type=video&videoEmbeddable=true&safeSearch=none&maxResults=10&q=' + encodeURIComponent(term) + '&key=' + encodeURIComponent(cfg.ytKey.trim())); }
+    catch (e) { throw new Error('Google ist von diesem Browser aus nicht erreichbar (' + e.message + '). Meist liegt das an der Internetverbindung oder an einem Werbeblocker bzw. einer Browser-Erweiterung.'); }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       const reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
