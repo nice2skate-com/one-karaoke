@@ -613,15 +613,20 @@ function songbookDlg(store) {
       ed && b.id.slice(0, 2) === 'c-' ? h('button', { class: 'btn ghost', title: 'Eigenen Titel löschen', onclick: () => { bookRemoveCustom(b.id); store.bookChanged(); draw(); } }, 'Löschen') : null,
       !ed ? null : h('button', { class: 'btn' + (b.has ? '' : ' primary'), onclick: () => pickVideo(store, { q: b.a + ' ' + b.t, onPick: (vid, d) => { bookSetVid(b.id, vid, d); store.bookChanged(); draw(); } }) }, b.has ? 'Ändern' : 'Video wählen'))));
   }
+  // Ergebnis bleibt im Dialog stehen (nicht nur als kurze Einblendung)
+  const autoMsg = h('p', { class: 'warn' }); autoMsg.style.display = 'none';
+  const say = t => { autoMsg.textContent = t; autoMsg.style.display = t ? '' : 'none'; };
   async function auto() {
-    if (busy) return; if (!store.canSearch()) return toast('Dafür wird der YouTube-API-Schlüssel benötigt (Einstellungen).', 'warn');
-    busy = true; let n = 0; const max = Math.max(1, +nIn.value || 1);
+    if (busy) return;
+    if (!store.canSearch()) return say('Auf diesem Gerät und unter dieser Adresse ist noch kein YouTube-API-Schlüssel hinterlegt. Bitte unter Einstellungen → YouTube eintragen.');
+    busy = true; let n = 0, miss = 0, err = ''; const max = Math.max(1, +nIn.value || 1);
     for (const b of bookList().filter(x => !x.has)) {
       if (n >= max) break;
-      info.textContent = 'Ordne zu: ' + b.t + ' …';
-      try { const r = await store.search(b.a + ' ' + b.t); if (r[0]) { bookSetVid(b.id, r[0].vid, r[0].dur); n++; } } catch (e) { toast(e.message, 'warn'); break; }
+      say('Ordne zu: ' + b.t + ' …');
+      try { const r = await store.search(b.a + ' ' + b.t); if (r[0]) { bookSetVid(b.id, r[0].vid, r[0].dur); n++; } else miss++; } catch (e) { err = e.message; break; }
     }
-    busy = false; store.bookChanged(); draw(); if (n) toast(n + ' Titel zugeordnet – bitte stichprobenartig prüfen.', 'good');
+    busy = false; store.bookChanged(); draw();
+    say((n ? n + ' Titel zugeordnet – bitte stichprobenartig prüfen. ' : err ? 'Kein Titel zugeordnet. ' : 'Nichts zuzuordnen. ') + (miss ? miss + ' Titel ohne Treffer. ' : '') + err);
   }
   function matchFiles() {
     let n = 0;
@@ -642,6 +647,7 @@ function songbookDlg(store) {
   cloudBook.pull().then(ch => { if (ch) draw(); }).catch(() => { });
   put(tools,
     h('div', { class: 'row wrap' }, FILES.length ? h('button', { class: 'btn', onclick: matchFiles }, 'Eigene Dateien zuordnen (' + FILES.length + ')') : null, h('button', { class: 'btn', onclick: auto }, 'Automatisch zuordnen'), nIn, h('span', { class: 'mut' }, 'Titel pro Durchlauf (je Titel 1 Suche aus dem Tageskontingent)')),
+    autoMsg,
     h('div', { class: 'row wrap' }, ct, ca, h('button', { class: 'btn', onclick: () => { if (!ct.value.trim()) return; bookAddCustom(clean(ct.value, 90), clean(ca.value, 60)); ct.value = ca.value = ''; store.bookChanged(); draw(); } }, 'Titel anlegen')),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Exportieren'), h('button', { class: 'btn', onclick: () => file.click() }, 'Importieren'), file, h('span', { class: 'mut' }, cloud.url ? 'Als Sicherung – der Abgleich zwischen den Geräten läuft über die Cloud.' : 'So wandert das Songbuch vom Mac aufs iPad.')));
   const off = () => { if (tools.isConnected) draw(); }; dj.on(off);
