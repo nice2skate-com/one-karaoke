@@ -233,8 +233,11 @@ async function ytSearch(q) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       const reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
-      const quota = /quota|rateLimit|dailyLimit/i.test(reason || '') || /quota|permission denied on the service/i.test((j.error && j.error.message) || ''); // Google meldet das aufgebrauchte Suchkontingent als 403 "Permission denied on the service"
-      throw new Error(quota ? 'Das YouTube-Tageskontingent (100 Suchen) ist vermutlich aufgebraucht. Bitte Songbuch oder Link nutzen – ab etwa 9 Uhr morgens geht die Suche wieder.' : 'YouTube-Suche fehlgeschlagen' + (j.error ? ': ' + j.error.message : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
+      const msg = (j.error && j.error.message) || '';
+      if (/quota|rateLimit|dailyLimit/i.test(reason || '') || /quota/i.test(msg)) throw new Error('Das YouTube-Tageskontingent ist aufgebraucht. Bitte Songbuch oder Link nutzen – ab etwa 9 Uhr morgens geht die Suche wieder.');
+      // "Permission denied on the service" ist Googles Sammelmeldung: Kontingent leer ODER Schlüssel für diese Adresse nicht freigegeben
+      if (/permission denied on the service/i.test(msg)) throw new Error('Google lehnt die Suche ab (Status ' + r.status + '). Entweder ist das Tageskontingent aufgebraucht, oder der Schlüssel ist für die Adresse ' + location.origin + ' nicht freigegeben bzw. nicht richtig eingetragen.');
+      throw new Error('YouTube-Suche fehlgeschlagen' + (msg ? ': ' + msg : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
     }
     items = (j.items || []).filter(i => i.id && i.id.videoId).map(i => ({ vid: i.id.videoId, title: decodeEnt(i.snippet.title), ch: decodeEnt(i.snippet.channelTitle), dur: 0 }));
     try {
