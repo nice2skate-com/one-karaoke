@@ -349,13 +349,14 @@ function Picker(store, role) {
     put(chips, ...[''].concat(genres).map(g => h('button', { class: 'chip' + (ui.g === g ? ' on' : ''), onclick: () => { ui.g = g; renderBook(); } }, g || 'Alle')));
     const q = slug(bq.value);
     const rows = list.filter(b => (!ui.g || (ui.g === TOP ? b.top : b.g === ui.g)) && (!q || slug(b.t + ' ' + b.a).includes(q)));
-    put(blist, ...(rows.length ? rows.map(b => {
+    const more = rows.length - 150; // bei 1000 Titeln nicht alles auf einmal zeichnen
+    put(blist, ...(rows.length ? rows.slice(0, 150).map(b => {
       const sel = ui.sel === b.id;
       return h('div', { class: 'srow' + (sel ? ' sel' : ''), onclick: () => { ui.sel = sel ? null : b.id; renderBook(); } },
         h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a)),
         role === 'dj' && !b.has ? h('span', { class: 'tag' }, 'ohne Video') : null,
         sel ? h('button', { class: 'btn primary', onclick: e => { e.stopPropagation(); choose(b); } }, 'Auf die Liste') : null);
-    }) : [h('p', { class: 'mut pad' }, kiosk && !list.length ? 'Das Songbuch wird gerade vorbereitet.' : 'Kein Treffer im Songbuch' + (role === 'guest' && !kiosk ? ' – unter „Wunsch“ nehmen wir den Titel gern auf.' : '.'))]));
+    }).concat(more > 0 ? [h('p', { class: 'mut pad' }, 'Noch ' + more + ' weitere Titel – bitte suchen oder eine Rubrik wählen.')] : []) : [h('p', { class: 'mut pad' }, kiosk && !list.length ? 'Das Songbuch wird gerade vorbereitet.' : 'Kein Treffer im Songbuch' + (role === 'guest' && !kiosk ? ' – unter „Wunsch“ nehmen wir den Titel gern auf.' : '.'))]));
   }
   function choose(b) {
     const kiosk = store.state && store.state.mode === 'kiosk';
