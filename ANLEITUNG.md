@@ -69,6 +69,20 @@ Auf dem **iPad** muss die App im Internet liegen (siehe 5.), weil das iPad keine
 - Das Tempo bleibt gleich. Mit geänderter Tonart ist der Ton etwa eine Zehntelsekunde verzögert; bei „Original“ läuft er unverändert durch.
 - Größere Sprünge (ab etwa ±4) klingen hörbar bearbeitet.
 
+### Tonart bei YouTube (Versuch)
+
+Die Konsole kann den Ton des Bühnenbild-Fensters abgreifen, verschieben und selbst ausgeben. Das geht nur in Chrome auf dem Mac und ist nicht mit echtem YouTube erprobt.
+
+1. Bühnenbild öffnen und einmal anklicken, wie gewohnt.
+2. In der Konsole rechts unter „Tonart für YouTube (Versuch)“ auf **Ton des Bühnenbilds abgreifen**.
+3. Im Chrome-Dialog den Reiter „Chrome-Tab“ wählen, den Tab **Bühnenbild** anklicken, „Tab-Audio freigeben“ angehakt lassen, **Teilen**.
+4. Ab jetzt haben auch YouTube-Titel die Tonart-Knöpfe. Bei „Original“ läuft der Ton unverändert durch.
+
+- Der Ton kommt dann aus dem Konsolen-Fenster. Das Fenster muss offen bleiben; die Freigabe ist nach jedem Neuladen neu nötig.
+- Der Ton ist leicht verzögert, der Liedtext läuft minimal voraus.
+- Chrome zeigt die Freigabe an (Hinweisleiste, eventuell ein Rahmen um das Bühnenbild). Vor dem Auftritt auf dem Beamer prüfen.
+- Meldet die Konsole, dass der Originalton zusätzlich weiterläuft, ist der Abgriff auf diesem Rechner nicht brauchbar.
+
 ## 4c. KaraFun-Modus
 
 KaraFun lässt sich vom Mac oder iPad aus nicht fernsteuern. Die App übernimmt deshalb Anmeldung, Reihenfolge und Ankündigung, abgespielt wird von Hand in KaraFun.

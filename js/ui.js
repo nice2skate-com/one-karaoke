@@ -559,7 +559,7 @@ function viewDJ(app, room) {
     const n = h('input', { class: 'in', value: e.name }), t = h('input', { class: 'in', value: e.t }), a = h('input', { class: 'in', value: e.a });
     const ks = h('select', { class: 'in' }, [-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6].map(k => h('option', { value: k, selected: (e.key || 0) === k }, k === 0 ? 'Original' : keyLabel(k) + ' Halbtöne ' + (k > 0 ? 'höher' : 'tiefer'))));
     const m = modal('Eintrag bearbeiten', h('div', { class: 'stack' }, field('Name', n), field('Titel', t), field('Interpret', a),
-      keyOk(e.vid) || (!e.vid && kf()) ? field('Tonart', ks, e.vid ? 'Das Tempo bleibt gleich.' : 'Als Merkhilfe – eingestellt wird in KaraFun.') : null,
+      keyOk(e.vid) || (!e.vid && kf()) || (tap.on && isYT(e)) ? field('Tonart', ks, e.vid ? 'Das Tempo bleibt gleich.' : 'Als Merkhilfe – eingestellt wird in KaraFun.') : null,
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { m.close(); resolve(e); } }, ico('video'), e.vid ? 'Video tauschen' : 'Video wählen'),
         h('button', { class: 'btn primary', onclick: () => { act('edit', { id: e.id, name: n.value, t: t.value, a: a.value, key: +ks.value }); m.close(); } }, 'Speichern'))));
   }
@@ -570,18 +570,58 @@ function viewDJ(app, room) {
     store.bookChanged(); toast('Im Songbuch gespeichert.', 'good');
   }
   const kf = () => !!(store.state && store.state.settings.karafun);
-  const keyCtl = e => keyOk(e.vid) || (!e.vid && kf())
+  // ---- Versuch: Tonart für YouTube. Die Konsole greift den Ton des Bühnenbild-Tabs ab, verschiebt ihn und gibt ihn selbst aus.
+  const tap = { on: false, ctx: null, node: null, src: null, stream: null, key: null, muted: true }; window.KKTap = tap;
+  const tapBox = h('div');
+  const isYT = e => !!(e && e.vid && !isFile(e.vid));
+  function tapApply() {
+    if (!tap.on) return;
+    const c = store.state && store.state.current, k = isYT(c) ? clampKey(c.key) : 0;
+    if (k === tap.key) return; tap.key = k;
+    tap.node.port.postMessage({ semitones: k, reset: true });
+    try { tap.src.disconnect(); } catch (e) { /* war nicht verbunden */ }
+    tap.src.connect(k ? tap.node : tap.ctx.destination);
+  }
+  function tapStop() {
+    if (tap.stream) tap.stream.getTracks().forEach(t => t.stop());
+    try { if (tap.src) tap.src.disconnect(); } catch (e) { /* schon getrennt */ }
+    tap.on = false; tap.stream = tap.src = null; tap.key = null; if (store.state) render(store.state);
+  }
+  async function tapStart() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || !window.AudioWorkletNode) return toast('Dieser Browser kann den Tab-Ton nicht abgreifen. Bitte Chrome auf dem Mac verwenden.', 'warn');
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: 1 }, audio: { suppressLocalAudioPlayback: true, echoCancellation: false, noiseSuppression: false, autoGainControl: false }, selfBrowserSurface: 'exclude', systemAudio: 'exclude', surfaceSwitching: 'exclude' });
+      const at = stream.getAudioTracks()[0];
+      if (!at) { stream.getTracks().forEach(t => t.stop()); return toast('Es wurde kein Ton freigegeben. Bitte den Tab „Bühnenbild“ wählen und „Tab-Audio freigeben“ angehakt lassen.', 'warn'); }
+      if (!tap.ctx) { const AC = window.AudioContext || window.webkitAudioContext; tap.ctx = new AC(); await tap.ctx.audioWorklet.addModule('js/pitch-worklet.js'); tap.node = new AudioWorkletNode(tap.ctx, 'kk-pitch', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] }); tap.node.connect(tap.ctx.destination); }
+      await tap.ctx.resume();
+      tap.stream = stream; tap.src = tap.ctx.createMediaStreamSource(stream); tap.on = true; tap.key = null;
+      const set = at.getSettings ? at.getSettings() : {}; tap.muted = set.suppressLocalAudioPlayback === true;
+      at.addEventListener('ended', tapStop);
+      tapApply(); render(store.state);
+    } catch (e) { if (e.name !== 'NotAllowedError') toast('Der Abgriff ist nicht möglich: ' + e.message, 'warn'); }
+  }
+  function drawTap(s) {
+    if (!store.local) return;
+    put(tapBox, h('h2', null, 'Tonart für YouTube (Versuch)'), tap.on
+      ? [h('p', null, 'Abgriff aktiv – der Ton des Bühnenbilds läuft über die Konsole.' + (isYT(s.current) && s.current.key ? ' Tonart ' + keyLabel(s.current.key) + '.' : '')),
+        tap.muted ? null : h('div', { class: 'alert' }, 'Chrome spielt den Originalton zusätzlich weiter. Dann ist der Abgriff auf diesem Rechner nicht brauchbar – bitte beenden.'),
+        h('div', { class: 'row' }, h('button', { class: 'btn', onclick: tapStop }, 'Abgriff beenden'))]
+      : [h('p', { class: 'mut small' }, 'Chrome fragt nach einer Freigabe: dort den Tab „Bühnenbild“ wählen und „Tab-Audio freigeben“ angehakt lassen. Danach lässt sich die Tonart auch bei YouTube-Titeln ändern. Der Ton kommt dann aus diesem Fenster, leicht verzögert.'),
+        h('div', { class: 'row' }, h('button', { class: 'btn', onclick: tapStart }, 'Ton des Bühnenbilds abgreifen'))]);
+  }
+  const keyCtl = e => keyOk(e.vid) || (!e.vid && kf()) || (tap.on && isYT(e))
     ? h('div', { class: 'keyctl' }, h('span', { class: 'lbl' }, 'Tonart'), h('button', { class: 'btn icon', title: 'Halbton tiefer', onclick: () => act('key', { id: e.id, k: (e.key || 0) - 1 }) }, '−'),
       h('b', null, keyLabel(e.key)), h('button', { class: 'btn icon', title: 'Halbton höher', onclick: () => act('key', { id: e.id, k: (e.key || 0) + 1 }) }, '+'),
       e.key ? h('button', { class: 'btn ghost', onclick: () => act('key', { id: e.id, k: 0 }) }, 'Original') : null, h('span', { class: 'mut' }, e.vid ? 'Halbtöne, Tempo bleibt gleich' : 'Halbtöne – bitte in KaraFun einstellen'))
-    : e.vid ? h('p', { class: 'mut small' }, 'Tonart ändern geht nur bei eigenen Videodateien im Ordner „videos“, nicht bei YouTube.') : null;
+    : e.vid ? h('p', { class: 'mut small' }, 'Tonart bei YouTube: nur mit dem Abgriff weiter unten (Versuch). Sonst geht es bei eigenen Videodateien.') : null;
   const ib = (icon, title, fn, cls) => h('button', { class: 'btn ghost icon ' + (cls || ''), title, onclick: fn }, ico(icon));
 
   function render(s) {
     if (!s) { put(nowBox, h('p', { class: 'mut pad' }, store.conn === 'none' ? 'Für die Fernsteuerung muss die Cloud-Verbindung eingerichtet sein (config.js).' : 'Verbinde mit dem Raum …')); return; }
     roomName.textContent = s.name + ' · ' + s.room;
     const c = s.current, S = s.settings;
-    drawGame(s);
+    drawGame(s); tapApply(); drawTap(s);
     // Jetzt
     const kids = [];
     if (c) {
@@ -611,7 +651,7 @@ function viewDJ(app, room) {
     qCount.textContent = s.queue.length || '';
     put(queueBox, s.queue.length ? h('div', { class: 'list' }, s.queue.map((e, i) => h('div', { class: 'qitem' },
       h('div', { class: 'qmain' }, h('span', { class: 'num' }, i + 1), e.vid ? tImg(e.vid) : h('button', { class: 'noimg btnlike', onclick: () => resolve(e), title: 'Video wählen' }, S.karafun ? 'KaraFun' : 'Video wählen'),
-        entryLine(e), e.key && (keyOk(e.vid) || !e.vid) ? h('span', { class: 'tag' }, 'Tonart ' + keyLabel(e.key)) : null, h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
+        entryLine(e), e.key && (keyOk(e.vid) || !e.vid || tap.on) ? h('span', { class: 'tag' }, 'Tonart ' + keyLabel(e.key)) : null, h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
       h('div', { class: 'qact' }, ib('top', 'Ganz nach vorn', () => act('top', { id: e.id })), ib('up', 'Nach oben', () => act('move', { id: e.id, d: -1 })), ib('down', 'Nach unten', () => act('move', { id: e.id, d: 1 })),
         ib('edit', 'Bearbeiten', () => editEntry(e)), ib('x', 'Entfernen', () => act('remove', { id: e.id })),
         h('button', { class: 'btn', onclick: () => act('stage', { id: e.id }) }, 'Auf die Bühne'))))) : h('p', { class: 'mut pad' }, 'Die Warteschlange ist leer.'));
@@ -642,7 +682,7 @@ function viewDJ(app, room) {
           h('button', { class: 'btn', title: '10 Sekunden vor', onclick: () => act('seek', { to: cur + 10 }) }, '+10'),
           h('button', { class: 'btn icon', title: 'Song beenden, weiter zum nächsten', onclick: () => { const s = store.state; if (s.current && s.now.st === 'playing') confirmDlg('Den laufenden Song beenden?', 'Beenden', () => act('next')); else act('next'); } }, ico('next')),
           h('button', { class: 'btn icon', title: 'Bühne freimachen', onclick: () => act('stop') }, ico('stop'))),
-        field('Video-Lautstärke', vol), h('div', { class: 'togs' }, tSignup, tApprove), field('Hinweiszeile', ticker), qrArea, histBox))));
+        field('Video-Lautstärke', vol), tapBox, h('div', { class: 'togs' }, tSignup, tApprove), field('Hinweiszeile', ticker), qrArea, histBox))));
   store.on(render);
   document.addEventListener('keydown', e => { if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || $('.ov')) return; if (e.code === 'Space') { e.preventDefault(); mainAction(); } });
   if (!store.local && !store.pin) askPin();
