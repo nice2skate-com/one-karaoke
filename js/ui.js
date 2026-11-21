@@ -590,8 +590,12 @@ function viewDJ(app, room) {
     const g = gameView(s.game); if (!g) return put(gameBox);
     const end = h('button', { class: 'btn', onclick: () => confirmDlg('Das Spiel beenden?', 'Beenden', () => game('end')) }, 'Beenden');
     if (g.type === 'battle') return put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Battle läuft'), h('div', { class: 'nm' }, g.a + ' gegen ' + g.b),
-      h('p', null, g.a + ': ' + g.ca + ' · ' + g.b + ': ' + g.cb + (g.phase === 'result' ? ' – Ergebnis wird gezeigt' : ' Stimmen')),
-      h('div', { class: 'row wrap' }, g.phase === 'vote' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : null, end)));
+      h('p', null, g.a + ': ' + g.ca + ' · ' + g.b + ': ' + g.cb + (g.phase === 'result' ? (g.strict ? ' – gewertet nur bekannte Geräte' : ' – Ergebnis wird gezeigt') : ' Stimmen')),
+      g.na + g.nb ? h('p', { class: 'mut small' }, 'Davon von Geräten, die erst während der Abstimmung dazukamen: ' + g.a + ' ' + g.na + ' · ' + g.b + ' ' + g.nb + '. Bekannte Geräte: ' + g.a + ' ' + g.ka + ' · ' + g.b + ' ' + g.kb + '.') : null,
+      g.sus && g.phase === 'vote' ? h('div', { class: 'alert' }, 'Auffällig: Viele neue Geräte stimmen fast alle für dieselbe Seite. Das kann auf Mehrfachstimmen hindeuten (privates Fenster oder gelöschter Browser-Speicher).') : null,
+      h('div', { class: 'row wrap' }, g.phase === 'vote' ? [
+        h('button', { class: 'btn' + (g.sus ? '' : ' primary'), onclick: () => game('reveal', { strict: false }) }, g.na + g.nb ? 'Auflösen mit allen Stimmen' : 'Auflösen'),
+        g.na + g.nb ? h('button', { class: 'btn' + (g.sus ? ' primary' : ''), onclick: () => game('reveal', { strict: true }) }, 'Nur bekannte Geräte werten') : null] : null, end)));
     const qz = quizOf(g), q = qz && qz.q[g.qi], last = qz && g.qi + 1 >= qz.q.length;
     put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Quiz · ' + (qz ? qz.title : g.id) + (g.phase === 'end' ? ' · Endstand' : g.phase === 'lobby' ? ' · Anmeldung' : g.phase === 'board' ? ' · Zwischenstand nach Frage ' : ' · Frage ' + (g.qi + 1) + ' von ' + (qz ? qz.q.length : '?'))),
       g.phase === 'lobby' ? h('p', null, 'Anmeldung läuft (eine Minute) · ' + (g.names || []).length + ' dabei') : g.phase !== 'end' && q ? [h('div', { class: 'st wrap' }, q[0]), h('p', { class: 'mut' }, 'Richtig: ' + q[1] + ' · ' + g.count + ' Antworten' + (g.phase === 'reveal' || g.phase === 'board' ? ', davon ' + g.right + ' richtig' : g.players && g.count >= g.players ? ' – alle haben geantwortet' : ''))] : null,

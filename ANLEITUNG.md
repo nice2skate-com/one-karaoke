@@ -97,6 +97,8 @@ KaraFun lässt sich vom Mac oder iPad aus nicht fernsteuern. Die App übernimmt 
 Beides startest du in der Konsole über **Spiele**. Mitgemacht wird am Handy über den QR-Code der Anmeldung.
 
 - **Battle:** zwei Namen eintragen (vorgeschlagen sind die beiden letzten Auftritte) → „Abstimmung starten“. Das Publikum stimmt ab, jede Person hat eine Stimme und kann sie bis zur Auflösung ändern. „Auflösen“ zeigt Sieger und Prozente.
+- **Schutz gegen Mehrfachstimmen:** Jedes Handy hat eine Stimme. Der DJ-Rechner merkt sich, wann sich ein Handy zum ersten Mal gemeldet hat. Stimmen von Geräten, die erst während der Abstimmung auftauchen (typisch für ein privates Fenster oder gelöschten Browser-Speicher), zeigt die Konsole getrennt an. Stimmen viele neue Geräte fast alle für dieselbe Seite, erscheint eine Warnung. Beim Auflösen wählst du „Auflösen mit allen Stimmen“ oder „Nur bekannte Geräte werten“. Bekannt ist ein Handy, das die Gäste-Seite schon vor dem Start des Battles geöffnet hatte.
+- **Grenze:** Völlig verhindern lässt sich Mehrfachabstimmen ohne Anmeldung nicht. Wer schon vor dem Battle mehrere private Fenster öffnet, zählt als mehrere bekannte Geräte.
 - **Quiz:** 20 Quizze mit je 8 Fragen. Die Frage steht auf dem Bühnenbild, vier Antworten am Handy. „Auflösen“ zeigt die richtige Antwort und die Rangliste, „Nächste Frage“ geht weiter, am Ende steht der Endstand.
 - **Punkte nach Kahoot-Prinzip:** Eine richtige Antwort bringt 500 bis 1000 Punkte – sofort getippt fast 1000, nach 20 Sekunden 500. Falsche oder fehlende Antworten bringen nichts.
 - **Serienbonus:** Ab der zweiten richtigen Antwort in Folge gibt es zusätzlich +100, dann +200 usw., höchstens +500 pro Frage. Eine falsche Antwort setzt die Serie zurück.

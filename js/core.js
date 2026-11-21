@@ -200,7 +200,7 @@ function reduce(s, a, x, m) {
       if (x.op === 'begin' && g.type === 'quiz') { if (g.phase !== 'lobby') return { ok: false }; g.phase = 'q'; g.qAt = g.pAt = now; g.ans = {}; return ok(); }
       if (x.op === 'replay' && g.cq) { g.playN = (g.playN || 0) + 1; return ok(); }
       if (x.op === 'reveal') {
-        if (g.type === 'battle') { g.phase = 'result'; return ok(); }
+        if (g.type === 'battle') { g.phase = 'result'; g.strict = !!x.strict; return ok(); }
         if (g.phase !== 'q') return fail();
         const before = rankMap(g.scores);
         // Wertung nach Kahoot-Prinzip: richtige Antwort 500–1000 Punkte je nach Tempo, ab der 2. richtigen Antwort in Folge Serienbonus (+100 je Antwort, höchstens +500)
@@ -227,7 +227,7 @@ function reduce(s, a, x, m) {
       }
       return fail();
     }
-    case 'vote': { const g = s.game; if (!g || g.type !== 'battle' || g.phase !== 'vote') return fail('Die Abstimmung ist beendet.'); if (x.side !== 'a' && x.side !== 'b') return fail(); g.votes[m.cid || 'x' + uid()] = x.side; return ok('Stimme gezählt.'); }
+    case 'vote': { const g = s.game; if (!g || g.type !== 'battle' || g.phase !== 'vote') return fail('Die Abstimmung ist beendet.'); if (x.side !== 'a' && x.side !== 'b') return fail(); g.votes[m.cid || 'x' + uid()] = { s: x.side, n: !(m.fs && m.fs < g.at) }; return ok('Stimme gezählt.'); }
     case 'join': { const g = s.game, name = clean(x.name, 28); if (!g || g.type !== 'quiz') return fail('Gerade läuft kein Quiz.'); if (!m.cid || !name) return fail('Bitte einen Namen eintragen.'); if (badText(name, S)) return fail(NAME_NO); const sc = g.scores[m.cid] || (g.scores[m.cid] = { name, p: 0, d: 0, ok: false }); sc.name = name; return ok('Du bist dabei.'); }
     case 'answer': {
       const g = s.game; if (!g || g.type !== 'quiz' || g.phase !== 'q') return fail('Diese Frage ist schon geschlossen.');
@@ -273,7 +273,15 @@ function quizOrder(id, qi) {
 // Öffentliche Sicht auf ein Spiel: nur Zählerstände, keine einzelnen Stimmen
 function gameView(g) {
   if (!g || g.view) return g || null;
-  if (g.type === 'battle') { const v = Object.values(g.votes); return { view: 1, type: 'battle', a: g.a, b: g.b, phase: g.phase, at: g.at, ca: v.filter(x => x === 'a').length, cb: v.filter(x => x === 'b').length }; }
+  if (g.type === 'battle') {
+    // Stimmen getrennt nach Geräten, die schon vor dem Battle verbunden waren (bekannt), und solchen, die erst währenddessen auftauchten (neu)
+    const v = Object.values(g.votes).map(x => typeof x === 'string' ? { s: x, n: false } : x), c = (side, n) => v.filter(x => x.s === side && (n == null || x.n === n)).length;
+    const ka = c('a', false), kb = c('b', false), na = c('a', true), nb = c('b', true), nw = na + nb;
+    // Auffällig: viele neue Geräte im Verhältnis zu den bekannten und fast alle für dieselbe Seite
+    const sus = nw >= 5 && nw > (ka + kb) * .5 && Math.max(na, nb) >= nw * .8;
+    const strict = g.phase === 'result' && !!g.strict;
+    return { view: 1, type: 'battle', a: g.a, b: g.b, phase: g.phase, at: g.at, ca: strict ? ka : ka + na, cb: strict ? kb : kb + nb, ka, kb, na, nb, sus, strict };
+  }
   const an = Object.values(g.ans), rank = rankList(g.scores, g.ans);
   return { view: 1, type: 'quiz', qt: QTIME, id: g.id, qi: g.qi, phase: g.phase, at: g.at, qAt: g.qAt, pAt: g.pAt, names: g.phase === 'lobby' ? Object.values(g.scores).map(x => x.name).slice(0, 40) : undefined, auto: !!g.auto, cq: g.cq ? g.cq.map(q => ({ c: q.c, w: q.w })) : undefined, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, rank, top: rank.slice(0, 8), dist: g.phase === 'reveal' || g.phase === 'end' ? [0, 1, 2, 3].map(i => an.filter(a => a.i === i).length) : undefined };
 }
@@ -572,6 +580,14 @@ async function playStats(days) {
   return { total: data.length, rows: Object.values(map).sort((a, b) => b.n - a.n || a.title.localeCompare(b.title)) };
 }
 
+// ---------- Geräte: wann sich ein Gast-Handy zum ersten Mal gemeldet hat (nur auf dem DJ-Rechner gespeichert) ----------
+function devFirst(room, cid) { return cid ? (LS.get('kk:dev:' + room, {})[cid] || 0) : 0; }
+function devMark(room, cid) {
+  if (!cid) return; const k = 'kk:dev:' + room, d = LS.get(k, {}); if (d[cid]) return;
+  d[cid] = Date.now(); const ids = Object.keys(d); if (ids.length > 3000) ids.sort((x, y) => d[x] - d[y]).slice(0, 500).forEach(x => delete d[x]);
+  LS.set(k, d);
+}
+
 // ---------- Stores ----------
 class LocalStore {
   constructor(room, mode, meta) {
@@ -624,12 +640,13 @@ class LocalStore {
     this.on(s => { if (s.rev !== lastRev) { clearTimeout(pend); pend = setTimeout(push, 150); } });
     bus.on(async m => {
       if (!m || !m.t) return;
-      if (m.t === 'hello') { if (!helloT) helloT = setTimeout(() => { helloT = null; push(); bus.send({ t: 'book', b: bookPub() }); }, 700); return; }
+      if (m.t === 'hello') { devMark(this.room, clean(m.cid, 20)); if (!helloT) helloT = setTimeout(() => { helloT = null; push(); bus.send({ t: 'book', b: bookPub() }); }, 700); return; }
       if (m.t === 'act') {
         const isDj = m.pin && String(m.pin) === String(this.state.settings.pin);
         if (!isDj && !GUEST_ACTS.includes(m.a)) return bus.send({ t: 'ack', rid: m.rid, ok: false, pin: true, msg: 'PIN fehlt oder ist falsch.' });
         if (!isDj && m.a === 'add') { const t = Date.now(); if (t - (rate[m.cid] || 0) < 1200) return bus.send({ t: 'ack', rid: m.rid, ok: false, msg: 'Einen Moment bitte …' }); rate[m.cid] = t; }
-        const r = await this.dispatch(m.a, m.x, { from: isDj ? 'dj' : 'guest', cid: clean(m.cid, 20), rid: clean(m.rid, 20) });
+        const dcid = clean(m.cid, 20), fs = devFirst(this.room, dcid); devMark(this.room, dcid);
+        const r = await this.dispatch(m.a, m.x, { from: isDj ? 'dj' : 'guest', cid: dcid, rid: clean(m.rid, 20), fs });
         if (!r.dup) bus.send({ t: 'ack', rid: m.rid, ok: r.ok, msg: r.msg });
         return;
       }
@@ -669,7 +686,7 @@ class RemoteStore {
       else if (m.t === 'book') { this._book = bookFromPub(m.b); this.emit(); }
       else if (m.t === 'ack' || m.t === 'results') { const p = this.pending[m.rid]; if (p) { delete this.pending[m.rid]; p(m); } }
     });
-    const hello = () => this.bus.send({ t: 'hello' });
+    const hello = () => this.bus.send({ t: 'hello', cid: CID });
     setTimeout(hello, 300);
     setInterval(() => { if (!this.state) hello(); }, 3500);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) hello(); });
