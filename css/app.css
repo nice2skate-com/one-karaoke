@@ -231,3 +231,9 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 @keyframes prise { to { transform: scaleY(1); } } @keyframes pfade { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .podium .pbar, .podium .pname, .podium .ppts { animation-duration: .01s; animation-delay: 0s !important; } }
 .board .grow { text-align: left; }
+/* Quiz: Zwischenstand groß, Serie, Zeitbalken am Handy */
+.card .toplist.board.big { max-width: 72cqw; font-size: clamp(1.05rem, 4.4cqh, 2.8rem); } .card .toplist.board.big li { padding: 1.2cqh 1cqw; }
+.streak { font-size: .75em; font-weight: 600; color: var(--anthracite); background: var(--champagne); border-radius: 999px; padding: 0 .55em; }
+.res .small { font-size: .85rem; }
+.qtime.phone { position: relative; height: 26px; border-radius: 13px; margin-top: 4px; } .qtime.phone i { animation: none; transition: width 1s linear; } .qtime.phone span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8rem; font-weight: 600; color: var(--offwhite); }
+.gap { margin: 0; }

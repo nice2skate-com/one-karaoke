@@ -129,10 +129,10 @@ const pct = (a, b) => a + b ? Math.round(a / (a + b) * 100) : 50;
 function topList(top, n) { return h('ol', { class: 'toplist' }, top.slice(0, n).map((x, i) => h('li', null, h('span', { class: 'num' }, i + 1), h('span', { class: 'grow' }, x.name), h('b', null, x.p)))); }
 // Platzwechsel-Zeichen und Rangliste (wie bei Kahoot): Platz, Name, Punkte der Runde, Wechsel, Gesamtpunkte
 const mvMark = mv => h('span', { class: 'mv ' + (mv > 0 ? 'up' : mv < 0 ? 'down' : '') }, mv > 0 ? '▲' : mv < 0 ? '▼' : '–');
-function scoreboard(rank, n, me) {
+function scoreboard(rank, n, me, big) {
   const rows = rank.slice(0, n), mine = me && rank.find(x => x.k === me), extra = mine && !rows.includes(mine);
-  const li = x => h('li', { class: x.k === me ? 'me' : '' }, h('span', { class: 'num' }, x.r), h('span', { class: 'grow' }, x.name), x.d ? h('em', { class: 'dlt' }, '+' + x.d) : null, mvMark(x.mv), h('b', null, x.p));
-  return h('ol', { class: 'toplist board' }, rows.map(li), extra ? [h('li', { class: 'gap' }, '…'), li(mine)] : null);
+  const li = x => h('li', { class: x.k === me ? 'me' : '' }, h('span', { class: 'num' }, x.r), h('span', { class: 'grow' }, x.name), x.d ? h('em', { class: 'dlt' }, '+' + x.d) : null, x.st >= 2 ? h('span', { class: 'streak', title: x.st + ' richtige in Folge' }, x.st + '×') : null, mvMark(x.mv), h('b', null, x.p));
+  return h('ol', { class: 'toplist board' + (big ? ' big' : '') }, rows.map(li), extra ? [h('li', { class: 'gap' }, '…'), li(mine)] : null);
 }
 // Siegerpodest: Platz 1 in der Mitte, 2 links, 3 rechts; die Säulen wachsen nacheinander
 function podium(rank, small) {
@@ -168,9 +168,10 @@ function gameCard(g, gUrl, T, onPick, picked, o) {
   }
   const reveal = g.phase === 'reveal', qpic = qz.music ? '' : qImg(g.id, g.qi + 1);
   const left = g.auto && !reveal && g.qAt ? Math.max(0, 20 - (Date.now() - g.qAt) / 1000) : 0;
-  if (reveal) return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Zwischenstand nach Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft q small' }, qz.q[g.qi][0]),
-    h('div', { class: 'revealrow' }, quizGrid(g, true, onPick, picked), g.rank.length ? scoreboard(g.rank, 5, null) : null),
-    h('p', { class: 'sub small' }, g.right + ' von ' + g.count + ' richtig'), endBtn];
+  if (g.phase === 'board') return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · nach Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft' }, 'Zwischenstand'),
+    g.rank.length ? scoreboard(g.rank, 5, null, true) : h('p', { class: 'sub' }, 'Noch keine Punkte.'), endBtn];
+  if (reveal) return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Auflösung Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft q' }, qz.q[g.qi][0]),
+    quizGrid(g, true, onPick, picked), h('p', { class: 'sub small' }, g.right + ' von ' + g.count + ' richtig'), endBtn];
   return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), qpic ? h('img', { class: 'qimg', src: qpic, alt: '' }) : null, h('h1', { class: 'soft q' }, (qz.music && !reveal ? '♪  ' : '') + qz.q[g.qi][0]), quizGrid(g, reveal, onPick, picked),
     left ? h('div', { class: 'qtime' }, h('i', { style: 'animation-duration:20s;animation-delay:-' + (20 - left).toFixed(1) + 's' })) : null,
     h('p', { class: 'sub small' }, g.count + ' Antworten'), qr, endBtn];
@@ -332,7 +333,9 @@ function Stage(root, store, opt) {
     }
     clearTimeout(autoT);
     if (api.player && g0 && g0.type === 'quiz' && (g0.auto || inLobby)) {
-      const wait = inLobby ? LOBBY_MS : g0.phase === 'q' ? 20000 : g0.phase === 'reveal' ? 10000 : 20000, op = inLobby ? 'begin' : g0.phase === 'q' ? 'reveal' : g0.phase === 'reveal' ? 'next' : 'end';
+      const allIn = g0.phase === 'q' && Object.keys(g0.scores).length > 0 && Object.keys(g0.ans).length >= Object.keys(g0.scores).length;
+      const wait = inLobby ? LOBBY_MS : g0.phase === 'q' ? (allIn ? Math.min(20000, Date.now() - g0.qAt + 1500) : 20000) : g0.phase === 'reveal' ? 6000 : g0.phase === 'board' ? 7000 : 30000;
+      const op = inLobby ? 'begin' : g0.phase === 'q' ? 'reveal' : g0.phase === 'reveal' || g0.phase === 'board' ? 'next' : 'end';
       autoT = setTimeout(() => store.dispatch('game', { op }, { from: 'player' }), Math.max(400, wait - (Date.now() - (g0.pAt || g0.qAt))));
     }
     if (!c) prog.style.width = '0';
@@ -590,10 +593,10 @@ function viewDJ(app, room) {
       h('p', null, g.a + ': ' + g.ca + ' · ' + g.b + ': ' + g.cb + (g.phase === 'result' ? ' – Ergebnis wird gezeigt' : ' Stimmen')),
       h('div', { class: 'row wrap' }, g.phase === 'vote' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : null, end)));
     const qz = quizOf(g), q = qz && qz.q[g.qi], last = qz && g.qi + 1 >= qz.q.length;
-    put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Quiz · ' + (qz ? qz.title : g.id) + (g.phase === 'end' ? ' · Endstand' : g.phase === 'lobby' ? ' · Anmeldung' : ' · Frage ' + (g.qi + 1) + ' von ' + (qz ? qz.q.length : '?'))),
-      g.phase === 'lobby' ? h('p', null, 'Anmeldung läuft (eine Minute) · ' + (g.names || []).length + ' dabei') : g.phase !== 'end' && q ? [h('div', { class: 'st wrap' }, q[0]), h('p', { class: 'mut' }, 'Richtig: ' + q[1] + ' · ' + g.count + ' Antworten' + (g.phase === 'reveal' ? ', davon ' + g.right + ' richtig' : ''))] : null,
+    put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Quiz · ' + (qz ? qz.title : g.id) + (g.phase === 'end' ? ' · Endstand' : g.phase === 'lobby' ? ' · Anmeldung' : g.phase === 'board' ? ' · Zwischenstand nach Frage ' : ' · Frage ' + (g.qi + 1) + ' von ' + (qz ? qz.q.length : '?'))),
+      g.phase === 'lobby' ? h('p', null, 'Anmeldung läuft (eine Minute) · ' + (g.names || []).length + ' dabei') : g.phase !== 'end' && q ? [h('div', { class: 'st wrap' }, q[0]), h('p', { class: 'mut' }, 'Richtig: ' + q[1] + ' · ' + g.count + ' Antworten' + (g.phase === 'reveal' || g.phase === 'board' ? ', davon ' + g.right + ' richtig' : g.players && g.count >= g.players ? ' – alle haben geantwortet' : ''))] : null,
       g.top.length ? topList(g.top, 5) : null,
-      h('div', { class: 'row wrap' }, g.phase === 'lobby' ? h('button', { class: 'btn primary', onclick: () => game('begin') }, 'Jetzt starten') : null, g.cq && g.phase === 'q' ? h('button', { class: 'btn', onclick: () => game('replay') }, 'Nochmal anspielen') : null, g.phase === 'q' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : g.phase === 'reveal' ? h('button', { class: 'btn primary', onclick: () => game('next') }, last ? 'Endstand zeigen' : 'Nächste Frage') : null, end)));
+      h('div', { class: 'row wrap' }, g.phase === 'lobby' ? h('button', { class: 'btn primary', onclick: () => game('begin') }, 'Jetzt starten') : null, g.cq && g.phase === 'q' ? h('button', { class: 'btn', onclick: () => game('replay') }, 'Nochmal anspielen') : null, g.phase === 'q' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : g.phase === 'reveal' ? h('button', { class: 'btn primary', onclick: () => game('next') }, last ? 'Siegerpodest zeigen' : 'Zwischenstand zeigen') : g.phase === 'board' ? h('button', { class: 'btn primary', onclick: () => game('next') }, 'Nächste Frage') : null, end)));
   }
   const playerHint = h('div');
   let lastAlive = 0, aliveInfo = {}, hintKey = '';
@@ -1017,7 +1020,7 @@ function viewGuest(app, room) {
   const store = hasLocal ? new LocalStore(room, 'stage', { from: 'guest', cid: window.KK.CID }) : new RemoteStore(room);
   document.title = 'Karaoke · DJ KOLJA ONE';
   const nowBox = h('div', { class: 'gnow' }), mineBox = h('div'), listBox = h('div'), main = h('div', { class: 'stack' }), waitBox = h('div', { class: 'gwait' });
-  const gameBox = h('div'), mine = {};
+  const gameBox = h('div'), mine = {}, shown = {}; let showAll = false, tickT = null;
   function drawGame(s) {
     const g = gameView(s.game); if (!g) return put(gameBox);
     const T = (du, sie) => s.settings.formal ? sie : du, k = g.type + ':' + g.at + ':' + (g.qi || 0);
@@ -1038,14 +1041,27 @@ function viewGuest(app, room) {
       const join = () => { const n = ni.value.trim(); if (!n) return toast('Bitte einen Namen eintragen.', 'warn'); LS.set('kk:name', n); mine[jk] = n; store.dispatch('join', { name: n }).then(r => { if (!r.ok) { delete mine[jk]; toast(r.msg, 'warn'); } drawGame(store.state); }); drawGame(store.state); };
       return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · ' + qz.title), mine[jk] ? [h('div', { class: 'nm' }, mine[jk]), h('p', { class: 'mut' }, T('Du bist dabei. Gleich kommt die erste Frage.', 'Sie sind dabei. Gleich kommt die erste Frage.'))] : [h('p', null, T('Gleich geht es los. Melde dich mit deinem Namen an.', 'Gleich geht es los. Bitte mit Namen anmelden.')), ni, h('button', { class: 'btn primary', onclick: join }, 'Mitspielen')]));
     }
+    // Abstand zum nächsten Platz (oder Vorsprung vor Platz 2)
+    const gapLine = () => { if (!me) return null; const i = g.rank.indexOf(me), ahead = g.rank.slice(0, i).reverse().find(x => x.p > me.p), next = g.rank.find(x => x.p < me.p);
+      return h('p', { class: 'mut gap' }, ahead ? (ahead.p - me.p) + ' Punkte hinter ' + ahead.name : next ? T('Du führst mit ', 'Sie führen mit ') + (me.p - next.p) + ' Punkten Vorsprung' : T('Du führst', 'Sie führen')); };
+    if (g.phase === 'board') return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Zwischenstand nach Frage ' + (g.qi + 1) + ' von ' + qz.q.length),
+      me ? [h('div', { class: 'res ' + (me.r <= 3 ? 'good' : 'none') }, h('b', null, 'Platz ' + me.r + ' von ' + g.rank.length), h('span', null, me.p + ' Punkte')), gapLine()] : null,
+      g.rank.length ? scoreboard(g.rank, showAll ? 60 : 5, myK) : null,
+      g.rank.length > 5 ? h('button', { class: 'btn ghost', onclick: () => { showAll = !showAll; drawGame(store.state); } }, showAll ? 'Nur die ersten fünf' : 'Alle Plätze anzeigen') : null));
+    // Zeitmessung am Handy: ab dem Moment, in dem die Frage hier erscheint
+    if (g.phase === 'q' && !shown[k]) shown[k] = performance.now();
+    clearTimeout(tickT);
+    const left = g.phase === 'q' && g.auto ? Math.max(0, (g.qt || 20000) - (performance.now() - shown[k])) : 0;
+    if (left > 0 && my == null) tickT = setTimeout(() => drawGame(store.state), 1000);
     const nameIn = h('input', { class: 'in', placeholder: T('Dein Name fürs Quiz', 'Ihr Name fürs Quiz'), maxLength: 28, value: name, onchange: e => { LS.set('kk:name', e.target.value); drawGame(store.state); } });
     put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('div', { class: 'st wrap' }, qz.q[g.qi][0]),
-      !name ? [h('p', { class: 'mut' }, T('Trag zuerst deinen Namen ein, dann kannst du antworten.', 'Bitte zuerst den Namen eintragen.')), nameIn] : quizGrid(g, reveal, i => send('answer', { i, name }, i), my),
-      reveal ? (my === 0 || (me && me.ok) ? h('div', { class: 'res good' }, h('b', null, 'Richtig!'), me && me.d ? h('span', null, '+' + me.d + ' Punkte') : null)
+      !name ? [h('p', { class: 'mut' }, T('Trag zuerst deinen Namen ein, dann kannst du antworten.', 'Bitte zuerst den Namen eintragen.')), nameIn] : quizGrid(g, reveal, i => send('answer', { i, name, ms: Math.round(performance.now() - (shown[k] || performance.now())) }, i), my),
+      left > 0 && my == null ? h('div', { class: 'qtime phone' }, h('i', { style: 'width:' + (left / (g.qt || 20000) * 100) + '%' }), h('span', null, Math.ceil(left / 1000) + ' s')) : null,
+      reveal ? (my === 0 || (me && me.ok) ? h('div', { class: 'res good' }, h('b', null, 'Richtig!'), me && me.d ? h('span', null, '+' + me.d + ' Punkte') : null, me && me.sb ? h('span', { class: 'small' }, 'inkl. +' + me.sb + ' Serienbonus · ' + me.st + ' richtige in Folge') : null)
         : my != null || (me && me.a) ? h('div', { class: 'res wrong' }, h('b', null, 'Leider falsch'), h('span', null, 'Richtig: ' + qz.q[g.qi][1]))
         : h('div', { class: 'res none' }, h('b', null, 'Keine Antwort'), h('span', null, 'Richtig: ' + qz.q[g.qi][1]))) : my != null ? h('p', { class: 'mut' }, 'Antwort gespeichert.') : null,
       reveal && me ? h('p', { class: 'stand' }, 'Platz ' + me.r + ' von ' + g.rank.length + ' · ' + me.p + ' Punkte ', mvMark(me.mv)) : null,
-      reveal && g.rank.length ? scoreboard(g.rank, 5, myK) : null));
+      reveal ? gapLine() : null));
   }
   let built = false;
   function render(s) {
