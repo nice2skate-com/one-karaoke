@@ -198,3 +198,6 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 .gameqr { display: flex; align-items: center; gap: 2cqw; color: var(--grey); font-size: clamp(.8rem, 2.2cqh, 1.4rem); } .card .gameqr .qr { width: clamp(80px, 18cqh, 200px); }
 .gamepanel { border: 1px solid rgba(183, 154, 107, .5); border-radius: var(--r); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .st.wrap { white-space: normal; }
+.qtime { width: 100%; height: 1cqh; min-height: 5px; background: var(--line); border-radius: 6px; overflow: hidden; } .qtime i { display: block; height: 100%; background: var(--bronze); animation: qshrink linear forwards; }
+@keyframes qshrink { from { width: 100%; } to { width: 0; } }
+.card button.qa { cursor: pointer; }

@@ -1,0 +1,7 @@
+Musik für das Quiz "Song erkennen" hier ablegen (MP3, M4A, WAV, OGG oder Videodateien).
+
+Dateiname:  Interpret - Titel.mp3
+Daraus bildet die App die richtige Antwort. Mindestens vier Dateien, besser dreißig oder mehr.
+
+Abgespielt wird nur, wenn die App lokal über start-mac.command läuft.
+Der Ordner ist von der Versionsverwaltung ausgenommen – die Dateien werden nicht hochgeladen.

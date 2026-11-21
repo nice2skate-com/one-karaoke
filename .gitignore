@@ -1,3 +1,5 @@
 videos/*
 !videos/LIESMICH.txt
+quiz/*
+!quiz/LIESMICH.txt
 .DS_Store

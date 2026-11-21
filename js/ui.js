@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey, quizFind, quizOrder, gameView, CID } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView, CID } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -31,6 +31,14 @@ const ICON = {
 const ico = n => h('span', { class: 'ico', html: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICON[n] + '"/></svg>' });
 const tImg = vid => isFile(vid) ? h('div', { class: 'noimg file' }, 'Datei') : h('img', { src: thumb(vid), alt: '', loading: 'lazy' });
 const mediaUrl = vid => isFile(vid) ? vid : 'https://www.youtube.com/watch?v=' + vid;
+let QFILES = []; const qfilesReady = quizFiles().then(l => { QFILES = l; return l; });
+// Runde "Song erkennen" aus den eigenen Dateien zusammenstellen
+function musicRound(n) {
+  const mix = a => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
+  const label = f => { const m = fileMeta(f); return m.t + (m.a ? ' – ' + m.a : ''); };
+  const pool = [...new Set(QFILES.map(label).concat(bookList().map(b => b.t + ' – ' + b.a)))];
+  return mix(QFILES).slice(0, n).map(f => { const c = label(f); return { f, c, w: mix(pool.filter(x => x !== c)).slice(0, 3) }; });
+}
 let FILES = []; const filesReady = localVideos().then(l => { FILES = l; return l; });
 const keyLabel = k => (k > 0 ? '+' : k < 0 ? '−' : '±') + Math.abs(k || 0);
 const songLine = e => e.t + (e.a ? ' · ' + e.a : '');
@@ -86,12 +94,12 @@ const LETTERS = ['A', 'B', 'C', 'D'];
 const pct = (a, b) => a + b ? Math.round(a / (a + b) * 100) : 50;
 function topList(top, n) { return h('ol', { class: 'toplist' }, top.slice(0, n).map((x, i) => h('li', null, h('span', { class: 'num' }, i + 1), h('span', { class: 'grow' }, x.name), h('b', null, x.p)))); }
 function quizGrid(g, reveal, onPick, picked) {
-  const qz = quizFind(g.id), q = qz.q[g.qi], o = quizOrder(g.id, g.qi);
+  const qz = quizOf(g), q = qz.q[g.qi], o = quizOrder(g.id + g.at, g.qi);
   return h('div', { class: 'qgrid' }, o.map((orig, pos) => h(onPick ? 'button' : 'div', { class: 'qa' + (reveal && orig === 0 ? ' ok' : '') + (picked === orig ? ' picked' : '') + (reveal && picked === orig && orig !== 0 ? ' wrong' : ''), disabled: onPick && (reveal || picked != null) ? true : null, onclick: onPick ? () => onPick(orig) : null },
     h('b', null, LETTERS[pos]), h('span', null, q[1 + orig]))));
 }
 // Karte für Bühnenbild und Kiosk
-function gameCard(g, gUrl, T) {
+function gameCard(g, gUrl, T, onPick, picked) {
   const qr = gUrl ? h('div', { class: 'gameqr' }, qrBox(gUrl, 'small'), h('span', null, T('Mit dem Handy mitmachen', 'Mit dem Handy mitmachen'))) : null;
   if (g.type === 'battle') {
     const pa = pct(g.ca, g.cb), res = g.phase === 'result', win = g.ca === g.cb ? '' : g.ca > g.cb ? g.a : g.b;
@@ -100,10 +108,12 @@ function gameCard(g, gUrl, T) {
       res ? h('div', { class: 'bars' }, [[g.a, pa, g.ca], [g.b, 100 - pa, g.cb]].map(([n, p, c]) => h('div', { class: 'bar' }, h('span', null, n), h('i', { style: 'width:' + p + '%' }), h('b', null, p + ' % · ' + c)))) : h('p', { class: 'sub' }, T('Wer hat euch mehr begeistert? Jetzt abstimmen.', 'Wer hat Sie mehr begeistert? Jetzt abstimmen.')),
       res ? null : h('p', { class: 'sub small' }, (g.ca + g.cb) + ' Stimmen'), res ? null : qr];
   }
-  const qz = quizFind(g.id); if (!qz) return [h('p', { class: 'sub' }, 'Quiz wird geladen …')];
+  const qz = quizOf(g); if (!qz) return [h('p', { class: 'sub' }, 'Quiz wird geladen …')];
   if (g.phase === 'end') return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Endstand'), g.top.length ? h('h1', null, g.top[0].name) : h('h1', { class: 'soft' }, 'Danke fürs Mitspielen'), topList(g.top, 5)];
   const reveal = g.phase === 'reveal';
-  return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft q' }, qz.q[g.qi][0]), quizGrid(g, reveal),
+  const left = g.auto && !reveal && g.qAt ? Math.max(0, 20 - (Date.now() - g.qAt) / 1000) : 0;
+  return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft q' }, (qz.music && !reveal ? '♪  ' : '') + qz.q[g.qi][0]), quizGrid(g, reveal, onPick, picked),
+    left ? h('div', { class: 'qtime' }, h('i', { style: 'animation-duration:20s;animation-delay:-' + (20 - left).toFixed(1) + 's' })) : null,
     h('p', { class: 'sub small' }, reveal ? g.right + ' von ' + g.count + ' richtig' : g.count + ' Antworten'), reveal ? (g.top.length ? topList(g.top, 3) : null) : qr];
 }
 
@@ -212,7 +222,7 @@ function Stage(root, store, opt) {
   root.append(h('div', { class: 'stage' + (opt.kiosk ? ' in-kiosk' : '') }, h('div', { class: 'screen' }, vidBox, card, hint), h('div', { class: 'sprog' }, prog), bar));
   const api = { player: null }; window.KKStage = api; // für Diagnose in der Browser-Konsole
   const T = (du, sie) => store.state.settings.formal ? sie : du;
-  let key = '', timer = null, hintT = null;
+  let key = '', timer = null, hintT = null, lastSnip = '', snipT = null, autoT = null; const snip = new Audio(), screenPick = {};
   const showHint = (txt, ms) => { hint.textContent = txt; hint.classList.toggle('show', !!txt); clearTimeout(hintT); if (txt && ms) hintT = setTimeout(() => hint.classList.remove('show'), ms); };
   store.onTick(m => { prog.style.width = m.dur ? Math.min(100, m.cur / m.dur * 100) + '%' : '0'; });
 
@@ -239,14 +249,30 @@ function Stage(root, store, opt) {
     else if (blocked) mode = 'blocked';
     else mode = 'video';
     const gv = gameView(s.game); if (gv) mode = 'game';
+    // Musikeinspieler und selbstlaufendes Quiz – nur dieses Fenster spielt ab und zählt die Zeit
+    const g0 = s.game, snipKey = g0 && g0.cq && g0.phase === 'q' ? g0.at + ':' + g0.qi + ':' + (g0.playN || 0) : '';
+    if (api.player && snipKey !== lastSnip) {
+      lastSnip = snipKey; snip.pause(); clearTimeout(snipT);
+      if (snipKey) {
+        snip.src = g0.cq[g0.qi].f;
+        snip.onloadedmetadata = () => { const d = snip.duration; try { snip.currentTime = isFinite(d) && d > 70 ? d * 0.3 : 0; } catch (e) { /* Start bei 0 */ } snip.play().catch(() => showHint('Bitte einmal in dieses Fenster klicken, damit der Ton startet.', 7000)); };
+        snip.onerror = () => showHint('Die Musikdatei lässt sich nicht abspielen.', 6000);
+        snipT = setTimeout(() => snip.pause(), 20000);
+      }
+    }
+    clearTimeout(autoT);
+    if (api.player && g0 && g0.type === 'quiz' && g0.auto) {
+      const wait = g0.phase === 'q' ? 20000 : g0.phase === 'reveal' ? 7000 : 15000, op = g0.phase === 'q' ? 'reveal' : g0.phase === 'reveal' ? 'next' : 'end';
+      autoT = setTimeout(() => store.dispatch('game', { op }, { from: 'player' }), Math.max(400, wait - (Date.now() - (g0.pAt || g0.qAt))));
+    }
     if (!c) prog.style.width = '0';
     if (s.note && now - s.note.at < 7000 && s.note.at !== render.noteAt) { render.noteAt = s.note.at; showHint(s.note.text, 7000); }
 
-    const k = [mode, gv && JSON.stringify(gv), c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
+    const k = [mode, gv && JSON.stringify(gv), gv && JSON.stringify(screenPick), c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
     if (k !== key) {
       key = k; clearTimeout(timer); clearInterval(timer);
       const kids = [];
-      if (mode === 'game') kids.push(...gameCard(gv, gUrl, T).filter(Boolean));
+      if (mode === 'game') { const qk = gv.at + ':' + gv.qi; kids.push(...gameCard(gv, gUrl, T, opt.kiosk && gv.type === 'quiz' ? i => { screenPick[qk] = i; store.dispatch('answer', { i, name: 'Am Bildschirm' }, { from: 'kiosk', cid: 'bildschirm' }); render(store.state); } : null, opt.kiosk ? screenPick[qk] : undefined).filter(Boolean)); }
       else if (mode === 'applause') {
         kids.push(h('div', { class: 'eyebrow' }, 'Applaus für'), h('h1', null, s.last.name), h('p', { class: 'sub' }, songLine(s.last)));
         timer = setTimeout(() => render(store.state), s.last.at + 6600 - now);
@@ -472,12 +498,15 @@ function viewDJ(app, room) {
     const s = store.state, hn = [...new Set(s.history.filter(x => x.sung).map(x => x.name))];
     const a = h('input', { class: 'in', placeholder: 'Erste Person / erstes Team', value: hn[1] || '' }), b = h('input', { class: 'in', placeholder: 'Zweite Person / zweites Team', value: hn[0] || '' });
     const sel = h('select', { class: 'in' }, (window.KK_QUIZ || []).map(q => h('option', { value: q.id }, q.title + ' (' + q.q.length + ' Fragen)')));
+    const tAuto = toggle('Automatisch weiter', false, () => { }, '20 Sekunden pro Frage, dann Auflösung und nächste Frage – ohne Knopfdruck.');
     const m = modal('Spiele', h('div', { class: 'stack settings' },
       guestUrl(store) ? null : h('div', { class: 'alert' }, 'Mitmachen können Gäste nur über die Handy-Anmeldung (QR-Code). Sie ist hier gerade nicht aktiv.'),
       h('h4', null, 'Battle'), h('p', { class: 'mut' }, 'Zwei Auftritte treten gegeneinander an, das Publikum stimmt per Handy ab. Vorgeschlagen sind die beiden letzten Sängerinnen und Sänger.'),
       a, b, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => game('battle', { a: a.value, b: b.value }).then(r => { if (r.ok) m.close(); }) }, 'Abstimmung starten')),
       h('h4', null, 'Musik-Quiz'), h('p', { class: 'mut' }, 'Die Frage erscheint auf dem Bühnenbild, geantwortet wird am Handy. Richtige und schnelle Antworten bringen Punkte.'),
-      sel, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => game('quiz', { id: sel.value }).then(r => { if (r.ok) m.close(); }) }, 'Quiz starten'))), { wide: true });
+      sel, tAuto, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => game('quiz', { id: sel.value, auto: tAuto.querySelector('input').checked }).then(r => { if (r.ok) m.close(); }) }, 'Quiz starten')),
+      h('h4', null, 'Song erkennen'), h('p', { class: 'mut' }, store.local ? (QFILES.length >= 4 ? QFILES.length + ' Musikdateien gefunden. Das Bühnenbild spielt je Frage 20 Sekunden an, die Gäste wählen am Handy den richtigen Titel.' : 'Dafür brauchst du eigene Musikdateien: mindestens vier Stücke in den Ordner „quiz“ neben der App legen (Dateiname „Interpret - Titel.mp3“) und die App über start-mac.command starten.') : 'Wird am Hauptgerät gestartet.'),
+      store.local && QFILES.length >= 4 ? h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => game('mquiz', { q: musicRound(8), auto: tAuto.querySelector('input').checked }).then(r => { if (r.ok) m.close(); }) }, 'Song erkennen starten')) : null), { wide: true });
   }
   function drawGame(s) {
     const g = gameView(s.game); if (!g) return put(gameBox);
@@ -485,11 +514,11 @@ function viewDJ(app, room) {
     if (g.type === 'battle') return put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Battle läuft'), h('div', { class: 'nm' }, g.a + ' gegen ' + g.b),
       h('p', null, g.a + ': ' + g.ca + ' · ' + g.b + ': ' + g.cb + (g.phase === 'result' ? ' – Ergebnis wird gezeigt' : ' Stimmen')),
       h('div', { class: 'row wrap' }, g.phase === 'vote' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : null, end)));
-    const qz = quizFind(g.id), q = qz && qz.q[g.qi], last = qz && g.qi + 1 >= qz.q.length;
+    const qz = quizOf(g), q = qz && qz.q[g.qi], last = qz && g.qi + 1 >= qz.q.length;
     put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Quiz · ' + (qz ? qz.title : g.id) + (g.phase === 'end' ? ' · Endstand' : ' · Frage ' + (g.qi + 1) + ' von ' + (qz ? qz.q.length : '?'))),
       g.phase !== 'end' && q ? [h('div', { class: 'st wrap' }, q[0]), h('p', { class: 'mut' }, 'Richtig: ' + q[1] + ' · ' + g.count + ' Antworten' + (g.phase === 'reveal' ? ', davon ' + g.right + ' richtig' : ''))] : null,
       g.top.length ? topList(g.top, 5) : null,
-      h('div', { class: 'row wrap' }, g.phase === 'q' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : g.phase === 'reveal' ? h('button', { class: 'btn primary', onclick: () => game('next') }, last ? 'Endstand zeigen' : 'Nächste Frage') : null, end)));
+      h('div', { class: 'row wrap' }, g.cq && g.phase === 'q' ? h('button', { class: 'btn', onclick: () => game('replay') }, 'Nochmal anspielen') : null, g.phase === 'q' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : g.phase === 'reveal' ? h('button', { class: 'btn primary', onclick: () => game('next') }, last ? 'Endstand zeigen' : 'Nächste Frage') : null, end)));
   }
   const playerHint = h('div');
   let lastAlive = 0, aliveInfo = {}, hintKey = '';
@@ -775,6 +804,12 @@ function viewKiosk(app, room) {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     const m = modal('Bedienung für den DJ', h('div', { class: 'stack' }, inp, h('button', { class: 'btn primary', onclick: go }, 'Öffnen'))); inp.focus();
   }
+  function quizDlg() {
+    const sel = h('select', { class: 'in' }, (QFILES.length >= 4 ? [h('option', { value: '#musik' }, 'Song erkennen (mit Musik)')] : []).concat((window.KK_QUIZ || []).map(q => h('option', { value: q.id }, q.title))));
+    const go = () => { const v = sel.value; store.dispatch('game', v === '#musik' ? { op: 'mquiz', q: musicRound(8), auto: true } : { op: 'quiz', id: v, auto: true }, { from: 'kiosk' }).then(r => { if (r.ok) m.close(); else toast(r.msg, 'warn'); }); };
+    const m = modal('Quiz spielen', h('div', { class: 'stack' }, h('p', { class: 'mut' }, 'Acht Fragen, 20 Sekunden pro Frage. Antworten direkt am Bildschirm oder mit dem Handy über den QR-Code.'), sel, h('button', { class: 'btn primary', onclick: go }, 'Los geht\'s')));
+  }
+  const quizBtn = h('button', { class: 'btn', onclick: () => { if (store.state.game) store.dispatch('game', { op: 'end' }, { from: 'kiosk' }); else quizDlg(); } });
   // Song beenden: bewusst nur mit langem Druck
   const skip = h('button', { class: 'btn hold' }, h('i'), h('span', null, 'Song beenden (gedrückt halten)'));
   let holdT = null;
@@ -786,6 +821,7 @@ function viewKiosk(app, room) {
     const c = s.current, T = (du, sie) => s.settings.formal ? sie : du;
     put(nowLine, ...(c ? [h('span', { class: 'eyebrow' }, c.phase === 'intro' ? 'An der Reihe' : 'Jetzt singt'), h('b', null, c.name), h('span', { class: 'sa' }, songLine(c))] : [h('span', { class: 'eyebrow' }, 'Bühne frei'), h('span', { class: 'sa' }, T('Trag dich ein – du bist sofort dran.', 'Tragen Sie sich ein – Sie sind sofort an der Reihe.'))]));
     skip.style.display = c && c.phase === 'live' ? '' : 'none';
+    quizBtn.textContent = s.game ? 'Quiz beenden' : 'Quiz spielen'; quizBtn.style.display = s.game || !c || c.phase !== 'live' ? '' : 'none';
     if (c && keyOk(c.vid)) nowLine.append(h('div', { class: 'keyctl' }, h('span', { class: 'lbl' }, 'Tonart'),
       h('button', { class: 'btn icon', onclick: () => store.dispatch('key', { id: c.id, k: (c.key || 0) - 1 }, { from: 'kiosk' }) }, '−'), h('b', null, keyLabel(c.key)),
       h('button', { class: 'btn icon', onclick: () => store.dispatch('key', { id: c.id, k: (c.key || 0) + 1 }, { from: 'kiosk' }) }, '+'), h('span', { class: 'mut' }, T('tiefer oder höher singen', 'tiefer oder höher singen'))));
@@ -800,7 +836,7 @@ function viewKiosk(app, room) {
       field('Video-Lautstärke', h('input', { type: 'range', min: 0, max: 100, value: s.play.vol, onchange: e => dj('vol', { v: e.target.value }) })))] :
       g && s.settings.signupOpen ? [h('div', { class: 'kqr' }, qrBox(g, 'small'), h('span', { class: 'mut' }, T('Oder bequem vom Handy aus eintragen.', 'Oder bequem vom Handy aus eintragen.')))] : []));
   }
-  app.append(h('div', { class: 'kiosk' }, left, h('aside', { class: 'kright' }, brand, nowLine, skip, h('section', { class: 'panel flat' }, h('h2', null, 'Song aussuchen'), Picker(store, 'kiosk')), qBox, adminBox)));
+  app.append(h('div', { class: 'kiosk' }, left, h('aside', { class: 'kright' }, brand, nowLine, skip, quizBtn, h('section', { class: 'panel flat' }, h('h2', null, 'Song aussuchen'), Picker(store, 'kiosk')), qBox, adminBox)));
   Stage(left, store, { kiosk: true });
   store.on(render);
   document.addEventListener('pointerdown', keepAwake, { once: true });
@@ -823,7 +859,7 @@ function viewGuest(app, room) {
         h('div', { class: 'qgrid two' }, [['a', g.a], ['b', g.b]].map(([side, n]) => h('button', { class: 'qa' + (mine[k] === side ? ' picked' : ''), onclick: () => send('vote', { side }, side) }, h('span', null, n)))),
         mine[k] ? h('p', { class: 'mut' }, T('Deine Stimme zählt. Du kannst sie noch ändern.', 'Ihre Stimme zählt. Sie können sie noch ändern.')) : null));
     }
-    const qz = quizFind(g.id); if (!qz) return put(gameBox);
+    const qz = quizOf(g); if (!qz) return put(gameBox);
     if (g.phase === 'end') return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Endstand'), g.top.length ? topList(g.top, 8) : h('p', { class: 'mut' }, 'Danke fürs Mitspielen.')));
     const name = LS.get('kk:name', '').trim(), reveal = g.phase === 'reveal', my = mine[k];
     const nameIn = h('input', { class: 'in', placeholder: T('Dein Name fürs Quiz', 'Ihr Name fürs Quiz'), maxLength: 28, value: name, onchange: e => { LS.set('kk:name', e.target.value); drawGame(store.state); } });
