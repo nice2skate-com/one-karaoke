@@ -846,15 +846,16 @@ function playlistDlg(store, done) {
 function songbookDlg(store) {
   const tools = h('div', { class: 'stack' });
   const info = h('p', { class: 'mut' }), list = h('div', { class: 'list scroll tall' }), q = h('input', { class: 'in', type: 'search', placeholder: 'Filtern …' });
-  const only = toggle('Nur Titel ohne Video', false, () => draw()), onlyBad = toggle('Nur Probleme', false, () => draw());
+  // "ohne Video" und "mit Video" schließen sich aus: Wer das eine einschaltet, schaltet das andere aus
+  const only = toggle('Nur Titel ohne Video', false, v => { if (v) onlyHas.set(false); draw(); }), onlyHas = toggle('Nur Titel mit Video', false, v => { if (v) only.set(false); draw(); }), onlyBad = toggle('Nur Probleme', false, () => draw());
   const nIn = h('input', { class: 'in', type: 'number', value: 15, min: 1, max: 90, style: 'width:5.5em' });
   let busy = false;
   function draw() {
     const ed = canEditBook(); tools.style.display = ed ? '' : 'none';
-    const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked, onlyProb = onlyBad.querySelector('input').checked;
+    const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked, onlyWith = onlyHas.querySelector('input').checked, onlyProb = onlyBad.querySelector('input').checked;
     const probs = all.filter(b => b.has && chkOf(b) && chkOf(b) !== 'ok'); probBtn.style.display = ed && probs.length ? '' : 'none'; probBtn.textContent = probs.length + ' Problem-Zuordnungen lösen';
     info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.' + (!cloud.url ? '' : dj.isDj ? ' Cloud-Songbuch aktiv: Änderungen gelten für alle Geräte.' + (cfg.ytKey ? ' Kontingent heute (nur dieses Gerät gezählt): etwa ' + quotaUsed() + ' von 10.000 Einheiten.' : '') + (cloudBook.err ? ' Letztes Speichern fehlgeschlagen: ' + cloudBook.err : '') : ' Zum Ändern bitte als DJ anmelden (Einstellungen → DJ-Anmeldung).');
-    put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has) && (!onlyProb || (b.has && chkOf(b) && chkOf(b) !== 'ok'))).slice(0, 300).map(b => h('div', { class: 'qrow' },
+    put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has) && (!onlyWith || b.has) && (!onlyProb || (b.has && chkOf(b) && chkOf(b) !== 'ok'))).slice(0, 300).map(b => h('div', { class: 'qrow' },
       b.has ? tImg(b.vid) : h('div', { class: 'noimg' }, '–'),
       h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a + ' · ' + b.g)),
       b.has && chkOf(b) && chkOf(b) !== 'ok' ? h('span', { class: 'tag bad' }, WHY[chkOf(b)] || 'Problem') : null,
@@ -913,7 +914,7 @@ function songbookDlg(store) {
     h('div', { class: 'row wrap' }, ct, ca, h('button', { class: 'btn', onclick: () => { if (!ct.value.trim()) return; bookAddCustom(clean(ct.value, 90), clean(ca.value, 60)); ct.value = ca.value = ''; store.bookChanged(); draw(); } }, 'Titel anlegen')),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Exportieren'), h('button', { class: 'btn', onclick: () => file.click() }, 'Importieren'), file, h('span', { class: 'mut' }, cloud.url ? 'Als Sicherung – der Abgleich zwischen den Geräten läuft über die Cloud.' : 'So wandert das Songbuch vom Mac aufs iPad.')));
   const off = () => { if (tools.isConnected) draw(); }; dj.on(off);
-  modal('Songbuch', h('div', { class: 'stack' }, info, h('div', { class: 'row wrap' }, q, only, onlyBad), list, tools), { wide: true });
+  modal('Songbuch', h('div', { class: 'stack' }, info, h('div', { class: 'row wrap' }, q, only, onlyHas, onlyBad), list, tools), { wide: true });
   draw();
 }
 
