@@ -13,7 +13,7 @@
 //   (z. B. "https://www.…/impressum"). Sie erscheinen unten auf der Gäste-Seite und der Startseite.
 //   Bei einem geschäftlichen Angebot für Gäste sollten beide hinterlegt sein.
 window.KK_CONFIG = {
-  legal: { impressum: "", datenschutz: "" },
+  legal: { impressum: "https://dj-kolja-one.de/impressum/", datenschutz: "https://dj-kolja-one.de/datenschutz/" },
   publicUrl: "https://karaoke.dj-kolja-one.de/",
   supabaseUrl: "https://envdjwhktfgphcknsbho.supabase.co",
   supabaseKey: "sb_publishable_9YX_95S_MyoJEKhaKsFyXA_Ny8ggw_A"
