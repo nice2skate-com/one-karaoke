@@ -208,3 +208,7 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 .cbx { width: 20px; height: 20px; accent-color: var(--bronze); flex: none; } label.qrow.chk { cursor: pointer; }
 .foot .legal { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 6px; } .linkbtn { background: none; border: 0; color: var(--grey); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
 .legalnote ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 10px; } .legalnote p { color: var(--grey); }
+/* Battle-Leiste über dem laufenden Karaoke-Video: schmal, am oberen Rand, lässt den Text frei */
+.gameov { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: none; align-items: center; justify-content: space-between; gap: 2cqw; padding: 1.2cqh 2cqw 3cqh; background: linear-gradient(rgba(0, 0, 0, .8), rgba(0, 0, 0, 0)); pointer-events: none; }
+.gameov.show { display: flex; } .gameov .gtxt { font-size: clamp(.9rem, 3.2cqh, 2.2rem); font-weight: 500; } .gameov .gtxt b { color: var(--bronze); letter-spacing: .24em; text-transform: uppercase; font-size: .6em; margin-right: 1.4cqw; }
+.gameov .qr { width: 9cqh; padding: .7cqh; border-radius: .8cqh; }

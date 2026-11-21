@@ -261,11 +261,11 @@ class Player {
 // ============ Bühnenbild (auch Teil des Kiosks) ============
 function Stage(root, store, opt) {
   opt = opt || {};
-  const vidBox = h('div', { class: 'vid' }), card = h('div', { class: 'card' }), hint = h('div', { class: 'hint' }), bar = h('div', { class: 'sbar' }), prog = h('i');
-  root.append(h('div', { class: 'stage' + (opt.kiosk ? ' in-kiosk' : '') }, h('div', { class: 'screen' }, vidBox, card, hint), h('div', { class: 'sprog' }, prog), bar));
+  const vidBox = h('div', { class: 'vid' }), card = h('div', { class: 'card' }), hint = h('div', { class: 'hint' }), gov = h('div', { class: 'gameov' }), bar = h('div', { class: 'sbar' }), prog = h('i');
+  root.append(h('div', { class: 'stage' + (opt.kiosk ? ' in-kiosk' : '') }, h('div', { class: 'screen' }, vidBox, card, gov, hint), h('div', { class: 'sprog' }, prog), bar));
   const api = { player: null }; window.KKStage = api; // für Diagnose in der Browser-Konsole
   const T = (du, sie) => store.state.settings.formal ? sie : du;
-  let key = '', timer = null, hintT = null, lastSnip = '', snipT = null, autoT = null, lobbyT = null, lobbySrc = {}; const snip = new Audio(), screenPick = {};
+  let key = '', timer = null, hintT = null, lastSnip = '', snipT = null, autoT = null, lobbyT = null, lobbySrc = {}, lastOv = ''; const snip = new Audio(), screenPick = {};
   const showHint = (txt, ms) => { hint.textContent = txt; hint.classList.toggle('show', !!txt); clearTimeout(hintT); if (txt && ms) hintT = setTimeout(() => hint.classList.remove('show'), ms); };
   store.onTick(m => { prog.style.width = m.dur ? Math.min(100, m.cur / m.dur * 100) + '%' : '0'; });
 
@@ -291,7 +291,16 @@ function Stage(root, store, opt) {
     else if (c.phase === 'intro' && s.play.want !== 'play') mode = 'intro';
     else if (blocked) mode = 'blocked';
     else mode = 'video';
-    const gv = gameView(s.game); if (gv) mode = 'game';
+    // Läuft gerade ein Karaoke-Video, bleibt es sichtbar (der Text wird gebraucht): Das Battle erscheint dann nur als schmale Leiste oben
+    const gv = gameView(s.game), over = !!gv && gv.type === 'battle' && mode === 'video';
+    if (gv && !over) mode = 'game';
+    const ovKey = over ? [gv.phase, gv.a, gv.b, gv.ca, gv.cb, !!gUrl].join('|') : '';
+    if (ovKey !== lastOv) {
+      lastOv = ovKey; gov.classList.toggle('show', over);
+      if (over) { const res = gv.phase === 'result', pa = pct(gv.ca, gv.cb), win = gv.ca === gv.cb ? '' : gv.ca > gv.cb ? gv.a : gv.b;
+        put(gov, h('div', { class: 'gtxt' }, h('b', null, 'Battle'), res ? (win ? win + ' gewinnt · ' + (win === gv.a ? pa : 100 - pa) + ' %' : 'Unentschieden') : gv.a + ' gegen ' + gv.b + ' · ' + (gv.ca + gv.cb) + ' Stimmen'), !res && gUrl ? qrBox(gUrl, 'mini') : null); }
+      else put(gov);
+    }
     // Musikeinspieler und selbstlaufendes Quiz – nur dieses Fenster spielt ab und zählt die Zeit
     const g0 = s.game, inLobby = g0 && g0.type === 'quiz' && g0.phase === 'lobby';
     if (inLobby && lobbySrc[g0.at] === undefined) lobbySrc[g0.at] = lobbyMusic(g0);
