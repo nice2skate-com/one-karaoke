@@ -131,7 +131,7 @@ Es gibt zwei Zweige im Repository:
 
 Ablauf:
 1. Neue Funktionen kommen auf `main` und lassen sich dort in der Vorschau ausprobieren (Cloudflare erzeugt für `main` eine eigene Vorschau-Adresse, unter „Deployments“ zu finden).
-2. Passt alles, gibst du frei: „Stand freigeben“ – dann kopiert Claude `main` nach `stable` und setzt eine Markierung `stand-<Datum>`. Erst danach ändert sich die Live-Seite.
+2. Passt alles, gibst du frei: „Stand freigeben“ – dann kopiert Claude `main` nach `stable`. Erst danach ändert sich die Live-Seite.
 3. **Vor einem Auftritt:** den Stand ein paar Tage vorher freigeben, auf allen Geräten testen und bis nach dem Auftritt nichts mehr freigeben.
 4. **Zurück zum alten Stand:** im Cloudflare-Dashboard unter „Deployments“ beim gewünschten Eintrag „Rollback to this deployment“. Das geht in Sekunden und ohne Programmierung.
 
