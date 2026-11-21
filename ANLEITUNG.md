@@ -122,6 +122,23 @@ Beides im Songbuch-Dialog der Konsole (als angemeldeter DJ).
 - **Impressum und Datenschutz:** In `config.js` bei `legal` die vollständigen Adressen der beiden Seiten eintragen. Sie erscheinen dann unten auf der Gäste-Seite und der Startseite. Solange sie fehlen, erinnert die Konsole in den Einstellungen daran.
 - **Hinweis zur Datenverarbeitung:** Auf der Gäste-Seite öffnet ein Link einen kurzen, sachlichen Text dazu, was die App mit Namen und Wünschen macht. Er ersetzt keine Datenschutzerklärung. In deiner eigenen Erklärung sollten Supabase (Nachrichtenkanal), Cloudflare (Auslieferung) und die YouTube-Vorschaubilder erwähnt sein.
 
+## 4h. Eingefrorener Stand für Auftritte
+
+Es gibt zwei Zweige im Repository:
+
+- **`main`** ist die Werkbank. Hier landet jede Änderung sofort.
+- **`stable`** ist der geprüfte Stand. Nur er ist unter `karaoke.dj-kolja-one.de` und `one-karaoke.pages.dev` erreichbar, wenn Cloudflare so eingestellt ist (Einstellung unten).
+
+Ablauf:
+1. Neue Funktionen kommen auf `main` und lassen sich dort in der Vorschau ausprobieren (Cloudflare erzeugt für `main` eine eigene Vorschau-Adresse, unter „Deployments“ zu finden).
+2. Passt alles, gibst du frei: „Stand freigeben“ – dann kopiert Claude `main` nach `stable` und setzt eine Markierung `stand-<Datum>`. Erst danach ändert sich die Live-Seite.
+3. **Vor einem Auftritt:** den Stand ein paar Tage vorher freigeben, auf allen Geräten testen und bis nach dem Auftritt nichts mehr freigeben.
+4. **Zurück zum alten Stand:** im Cloudflare-Dashboard unter „Deployments“ beim gewünschten Eintrag „Rollback to this deployment“. Das geht in Sekunden und ohne Programmierung.
+
+Einmalig in Cloudflare einstellen (Workers & Pages → one-karaoke → Settings → Build → Branch control): **Production branch** von `main` auf `stable` ändern und speichern.
+
+Den lokalen Kiosk-Mac immer aus dem freigegebenen Stand laden: `https://github.com/nice2skate-com/one-karaoke/archive/refs/heads/stable.zip`
+
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 
 Der Ordner ist eine statische Website. Geeignet ist jedes HTTPS-Hosting, z. B. ein Unterordner auf dem eigenen Webspace (`karaoke.deine-domain.de`), Netlify oder GitHub Pages. Den kompletten Ordnerinhalt hochladen – fertig.
