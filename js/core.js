@@ -73,8 +73,11 @@ const VID_RE = /^[\w-]{11}$/;
 const FILE_RE = /^(https:\/\/[^\s"'<>]{4,400}|videos\/[^"'<>]{1,240})\.(mp4|webm|m4v|mov)(\?[^\s"'<>]*)?$/i;
 const isFile = v => !!v && !VID_RE.test(v);
 const mediaOk = v => VID_RE.test(v || '') || FILE_RE.test(v || '');
+// Tonart-Verschiebung in Halbtönen; funktioniert nur bei eigenen Videodateien neben der App
+const clampKey = k => Math.max(-6, Math.min(6, Math.round(+k || 0)));
+const keyOk = v => isFile(v) && !/^https?:/i.test(v);
 function mkEntry(x) {
-  return { id: uid(), name: clean(x.name, 28), t: clean(x.t, 90), a: clean(x.a, 60), vid: mediaOk(x.vid) ? x.vid : '', dur: Math.max(0, Math.min(3600, +x.dur || 0)), sid: clean(x.sid, 90), by: 'dj', ts: Date.now() };
+  return { id: uid(), name: clean(x.name, 28), t: clean(x.t, 90), a: clean(x.a, 60), vid: mediaOk(x.vid) ? x.vid : '', dur: Math.max(0, Math.min(3600, +x.dur || 0)), sid: clean(x.sid, 90), key: clampKey(x.key), by: 'dj', ts: Date.now() };
 }
 function sungCount(s, name) { const n = lc(name); return s.history.filter(x => x.sung && lc(x.name) === n).length + (s.current && lc(s.current.name) === n ? 1 : 0); }
 function insertFair(s, e) {
@@ -105,7 +108,7 @@ function reduce(s, a, x, m) {
   x = x || {}; m = m || { from: 'dj' };
   const S = s.settings, dj = m.from === 'dj' || m.from === 'player';
   if (m.rid) { s.seen = s.seen || []; if (s.seen.includes(m.rid)) return { ok: false, dup: true }; s.seen.push(m.rid); if (s.seen.length > 80) s.seen.shift(); }
-  if (!dj && a !== 'add' && !(m.from === 'kiosk' && (a === 'play' || a === 'next'))) return fail('Nicht erlaubt.');
+  if (!dj && a !== 'add' && !(m.from === 'kiosk' && (a === 'play' || a === 'next' || (a === 'key' && s.current && x.id === s.current.id)))) return fail('Nicht erlaubt.');
   const find = id => s.queue.find(q => q.id === id) || (s.current && s.current.id === id ? s.current : null);
   switch (a) {
     case 'add': {
@@ -138,9 +141,11 @@ function reduce(s, a, x, m) {
       if (x.name != null) e.name = clean(x.name, 28) || e.name;
       if (x.t != null) e.t = clean(x.t, 90) || e.t;
       if (x.a != null) e.a = clean(x.a, 60);
+      if (x.key != null) e.key = clampKey(x.key);
       if (x.vid != null && (x.vid === '' || mediaOk(x.vid))) { e.vid = x.vid; e.dur = +x.dur || 0; if (e === s.current) { s.now = { st: 'idle' }; s.play.want = 'pause'; e.phase = 'intro'; } }
       return ok();
     }
+    case 'key': { const e = find(x.id); if (!e) return fail(); e.key = clampKey(x.k); return ok(); }
     case 'stage': { if (s.current) finish(s, !!s.current.startedAt, false); return toStage(s, x.id) ? ok() : fail('Die Warteschlange ist leer.'); }
     case 'play': {
       if (!s.current) return toStage(s) ? ok() : fail('Die Warteschlange ist leer.');
@@ -527,6 +532,7 @@ window.KK = {
   initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
   LocalStore, RemoteStore, dj, cloudBook, playStats,
   // Mit Cloud-Songbuch darf nur der angemeldete DJ das Songbuch ändern
+  keyOk, clampKey,
   canEditBook: () => !cloud.url || MOCK || dj.isDj
 };
 })();

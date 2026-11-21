@@ -179,3 +179,5 @@ input[type=range] { width: 100%; accent-color: var(--bronze); }
 .noimg.file { border-style: solid; color: var(--bronze); letter-spacing: .12em; text-transform: uppercase; }
 .stage.in-kiosk .sbar { min-height: 0; padding: 1.2vh 2vw; } .stage.in-kiosk .sbar .ln { font-size: clamp(.85rem, 2.2vh, 1.4rem); }
 .fake { position: absolute; inset: 0; }
+.keyctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; } .keyctl b { min-width: 2.2em; text-align: center; font-size: 1.15rem; } .keyctl .btn.icon { font-size: 1.3rem; }
+.mut.small { font-size: .85rem; }

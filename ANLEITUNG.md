@@ -61,6 +61,14 @@ Auf dem **iPad** muss die App im Internet liegen (siehe 5.), weil das iPad keine
 - Alternativ lässt sich im Reiter **Link** die direkte https-Adresse einer Videodatei einfügen (z. B. vom eigenen Server).
 - Der Ordner `videos` ist von der Versionsverwaltung ausgenommen – die Dateien landen nicht im Internet.
 
+## 4b. Tonart ändern (Key Shift)
+
+- Funktioniert bei **eigenen Videodateien** im Ordner `videos` (lokaler Start über `start-mac.command`). Bei YouTube-Videos ist es technisch nicht möglich, weil der Browser keinen Zugriff auf deren Ton gibt.
+- **Vorher einstellen:** Stift am Eintrag in der Warteschlange → „Tonart“ (−6 bis +6 Halbtöne). Der Eintrag zeigt dann z. B. „Tonart +2“.
+- **Während des Songs:** in der Konsole unter dem laufenden Titel mit − und +. Im Kiosk hat die singende Person dieselben Knöpfe.
+- Das Tempo bleibt gleich. Mit geänderter Tonart ist der Ton etwa eine Zehntelsekunde verzögert; bei „Original“ läuft er unverändert durch.
+- Größere Sprünge (ab etwa ±4) klingen hörbar bearbeitet.
+
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 
 Der Ordner ist eine statische Website. Geeignet ist jedes HTTPS-Hosting, z. B. ein Unterordner auf dem eigenen Webspace (`karaoke.deine-domain.de`), Netlify oder GitHub Pages. Den kompletten Ordnerinhalt hochladen – fertig.

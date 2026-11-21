@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -32,6 +32,7 @@ const ico = n => h('span', { class: 'ico', html: '<svg viewBox="0 0 24 24" aria-
 const tImg = vid => isFile(vid) ? h('div', { class: 'noimg file' }, 'Datei') : h('img', { src: thumb(vid), alt: '', loading: 'lazy' });
 const mediaUrl = vid => isFile(vid) ? vid : 'https://www.youtube.com/watch?v=' + vid;
 let FILES = []; const filesReady = localVideos().then(l => { FILES = l; return l; });
+const keyLabel = k => (k > 0 ? '+' : k < 0 ? '−' : '±') + Math.abs(k || 0);
 const songLine = e => e.t + (e.a ? ' · ' + e.a : '');
 const logo = cls => h('img', { class: 'logo ' + (cls || ''), src: 'assets/logo.svg', alt: 'DJ KOLJA ONE' });
 function toast(msg, kind) {
@@ -93,8 +94,26 @@ class FilePlayer {
     v.addEventListener('error', () => { if (v.getAttribute('src')) ev.onError({ data: 'Datei' }); });
   }
   show(b) { this.v.style.display = b ? '' : 'none'; }
-  cueVideoById(src) { this.st = -1; this.v.src = src; this.v.load(); }
-  playVideo() { const p = this.v.play(); if (p) p.catch(() => { }); }
+  cueVideoById(src) { this.st = -1; this.v.src = src; this.v.load(); if (this.node) this.node.port.postMessage({ reset: true }); }
+  playVideo() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => { }); const p = this.v.play(); if (p) p.catch(() => { }); }
+  // Tonart: Ton der Datei läuft durch ein Echtzeit-Modul; bei 0 Halbtönen direkt, ohne Verzögerung
+  async setKey(k) {
+    k = k || 0; if (k === this.key) return; this.key = k;
+    if (!k && !this.ctx) return;
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC();
+        await this.ctx.audioWorklet.addModule('js/pitch-worklet.js');
+        this.srcNode = this.ctx.createMediaElementSource(this.v);
+        this.node = new AudioWorkletNode(this.ctx, 'kk-pitch', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+        this.node.connect(this.ctx.destination);
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => { });
+      this.node.port.postMessage({ semitones: this.key, reset: true });
+      this.srcNode.disconnect();
+      this.srcNode.connect(this.key ? this.node : this.ctx.destination);
+    } catch (e) { console.warn('Tonart:', e.message); }
+  }
   pauseVideo() { this.v.pause(); }
   stopVideo() { this.st = -1; this.v.pause(); this.v.removeAttribute('src'); this.v.load(); }
   seekTo(t) { try { this.v.currentTime = t; } catch (e) { /* noch nicht geladen */ } }
@@ -138,6 +157,7 @@ class Player {
     }
     if (!key) return;
     this.p.setVolume(s.play.vol);
+    if (this.p === this.fp) this.fp.setKey(keyOk(c.vid) ? clampKey(c.key) : 0);
     if (s.play.seek && s.play.seek.n !== this.seekN) { this.seekN = s.play.seek.n; this.p.seekTo(s.play.seek.to, true); }
     const st = this.p.getPlayerState();
     if (s.play.want === 'play') { if (st !== 1 && st !== 3) { if (!this.wantSince) this.wantSince = Date.now(); this.p.playVideo(); } }
@@ -164,7 +184,7 @@ function Stage(root, store, opt) {
   opt = opt || {};
   const vidBox = h('div', { class: 'vid' }), card = h('div', { class: 'card' }), hint = h('div', { class: 'hint' }), bar = h('div', { class: 'sbar' }), prog = h('i');
   root.append(h('div', { class: 'stage' + (opt.kiosk ? ' in-kiosk' : '') }, h('div', { class: 'screen' }, vidBox, card, hint), h('div', { class: 'sprog' }, prog), bar));
-  const api = { player: null };
+  const api = { player: null }; window.KKStage = api; // für Diagnose in der Browser-Konsole
   const T = (du, sie) => store.state.settings.formal ? sie : du;
   let key = '', timer = null, hintT = null;
   const showHint = (txt, ms) => { hint.textContent = txt; hint.classList.toggle('show', !!txt); clearTimeout(hintT); if (txt && ms) hintT = setTimeout(() => hint.classList.remove('show'), ms); };
@@ -195,7 +215,7 @@ function Stage(root, store, opt) {
     if (!c) prog.style.width = '0';
     if (s.note && now - s.note.at < 7000 && s.note.at !== render.noteAt) { render.noteAt = s.note.at; showHint(s.note.text, 7000); }
 
-    const k = [mode, c && c.id, c && c.name, c && c.t, c && c.vid, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
+    const k = [mode, c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
     if (k !== key) {
       key = k; clearTimeout(timer); clearInterval(timer);
       const kids = [];
@@ -211,6 +231,7 @@ function Stage(root, store, opt) {
       } else if (mode === 'intro' || mode === 'extern' || mode === 'error') {
         kids.push(h('div', { class: 'eyebrow' }, mode === 'extern' && c.phase === 'live' ? 'Jetzt singt' : mode === 'error' ? 'Einen Moment bitte' : opt.kiosk ? 'Jetzt an der Reihe' : 'Als Nächstes auf der Bühne'),
           h('h1', null, c.name), h('p', { class: 'sub' }, c.t + (c.a ? ' · ' + c.a : '')));
+        if (c.key && keyOk(c.vid)) kids.push(h('p', { class: 'sub small' }, 'Tonart ' + keyLabel(c.key) + ' Halbtöne'));
         if (mode === 'error') kids.push(h('p', { class: 'sub small' }, 'Das Video wird gerade getauscht.'));
         if (mode === 'intro' && opt.kiosk) kids.push(h('button', { class: 'btn primary huge', onclick: () => { store.dispatch('play', {}, { from: 'kiosk' }); if (api.player) api.player.kick(); } }, ico('play'), 'Start'),
           h('p', { class: 'sub small' }, T('Mikrofon in die Hand – und los.', 'Mikrofon in die Hand – und los.')));
@@ -454,9 +475,11 @@ function viewDJ(app, room) {
   }
   function editEntry(e) {
     const n = h('input', { class: 'in', value: e.name }), t = h('input', { class: 'in', value: e.t }), a = h('input', { class: 'in', value: e.a });
+    const ks = h('select', { class: 'in' }, [-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6].map(k => h('option', { value: k, selected: (e.key || 0) === k }, k === 0 ? 'Original' : keyLabel(k) + ' Halbtöne ' + (k > 0 ? 'höher' : 'tiefer'))));
     const m = modal('Eintrag bearbeiten', h('div', { class: 'stack' }, field('Name', n), field('Titel', t), field('Interpret', a),
+      keyOk(e.vid) ? field('Tonart', ks, 'Das Tempo bleibt gleich.') : null,
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { m.close(); resolve(e); } }, ico('video'), e.vid ? 'Video tauschen' : 'Video wählen'),
-        h('button', { class: 'btn primary', onclick: () => { act('edit', { id: e.id, name: n.value, t: t.value, a: a.value }); m.close(); } }, 'Speichern'))));
+        h('button', { class: 'btn primary', onclick: () => { act('edit', { id: e.id, name: n.value, t: t.value, a: a.value, key: +ks.value }); m.close(); } }, 'Speichern'))));
   }
   function saveToBook(e) {
     if (!store.local) return toast('Das Songbuch wird am Hauptgerät gepflegt.');
@@ -464,6 +487,11 @@ function viewDJ(app, room) {
     const id = slug(e.a + '-' + e.t); if (bookFind(id)) bookSetVid(id, e.vid, e.dur); else bookAddCustom(e.t, e.a, e.vid, e.dur);
     store.bookChanged(); toast('Im Songbuch gespeichert.', 'good');
   }
+  const keyCtl = e => keyOk(e.vid)
+    ? h('div', { class: 'keyctl' }, h('span', { class: 'lbl' }, 'Tonart'), h('button', { class: 'btn icon', title: 'Halbton tiefer', onclick: () => act('key', { id: e.id, k: (e.key || 0) - 1 }) }, '−'),
+      h('b', null, keyLabel(e.key)), h('button', { class: 'btn icon', title: 'Halbton höher', onclick: () => act('key', { id: e.id, k: (e.key || 0) + 1 }) }, '+'),
+      e.key ? h('button', { class: 'btn ghost', onclick: () => act('key', { id: e.id, k: 0 }) }, 'Original') : null, h('span', { class: 'mut' }, 'Halbtöne, Tempo bleibt gleich'))
+    : e.vid ? h('p', { class: 'mut small' }, 'Tonart ändern geht nur bei eigenen Videodateien im Ordner „videos“, nicht bei YouTube.') : null;
   const ib = (icon, title, fn, cls) => h('button', { class: 'btn ghost icon ' + (cls || ''), title, onclick: fn }, ico(icon));
 
   function render(s) {
@@ -478,6 +506,7 @@ function viewDJ(app, room) {
           h('div', { class: 'nm' }, c.name), h('div', { class: 'sa' }, c.t + (c.a ? ' · ' + c.a : ''))),
         ib('edit', 'Bearbeiten', () => editEntry(c))));
       if (s.now.st === 'error') kids.push(h('div', { class: 'alert' }, isFile(c.vid) ? 'Die Videodatei lässt sich nicht abspielen (fehlt sie im Ordner „videos“, oder ist das Format unbekannt?).' : 'Dieses Video lässt sich nicht einbetten (YouTube-Fehler ' + (s.now.err || '?') + ').', h('button', { class: 'btn primary', onclick: () => resolve(c) }, 'Anderes Video wählen')));
+      kids.push(keyCtl(c));
       if (!c.vid) kids.push(h('div', { class: 'alert' }, 'Kein Video zugeordnet – entweder jetzt wählen oder extern abspielen (z. B. KaraFun).', h('button', { class: 'btn', onclick: () => resolve(c) }, 'Video wählen')));
     } else kids.push(h('div', { class: 'nowhead' }, h('div', { class: 'grow' }, h('div', { class: 'eyebrow' }, 'Bühne frei'), h('div', { class: 'sa' }, s.queue.length ? 'Als Nächstes: ' + s.queue[0].name + ' – ' + s.queue[0].t : 'Noch niemand auf der Liste.'))));
     put(nowBox, ...kids);
@@ -495,7 +524,7 @@ function viewDJ(app, room) {
     qCount.textContent = s.queue.length || '';
     put(queueBox, s.queue.length ? h('div', { class: 'list' }, s.queue.map((e, i) => h('div', { class: 'qitem' },
       h('div', { class: 'qmain' }, h('span', { class: 'num' }, i + 1), e.vid ? tImg(e.vid) : h('button', { class: 'noimg btnlike', onclick: () => resolve(e), title: 'Video wählen' }, 'Video wählen'),
-        entryLine(e), h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
+        entryLine(e), e.key && keyOk(e.vid) ? h('span', { class: 'tag' }, 'Tonart ' + keyLabel(e.key)) : null, h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
       h('div', { class: 'qact' }, ib('top', 'Ganz nach vorn', () => act('top', { id: e.id })), ib('up', 'Nach oben', () => act('move', { id: e.id, d: -1 })), ib('down', 'Nach unten', () => act('move', { id: e.id, d: 1 })),
         ib('edit', 'Bearbeiten', () => editEntry(e)), ib('x', 'Entfernen', () => act('remove', { id: e.id })),
         h('button', { class: 'btn', onclick: () => act('stage', { id: e.id }) }, 'Auf die Bühne'))))) : h('p', { class: 'mut pad' }, 'Die Warteschlange ist leer.'));
@@ -697,6 +726,9 @@ function viewKiosk(app, room) {
     const c = s.current, T = (du, sie) => s.settings.formal ? sie : du;
     put(nowLine, ...(c ? [h('span', { class: 'eyebrow' }, c.phase === 'intro' ? 'An der Reihe' : 'Jetzt singt'), h('b', null, c.name), h('span', { class: 'sa' }, songLine(c))] : [h('span', { class: 'eyebrow' }, 'Bühne frei'), h('span', { class: 'sa' }, T('Trag dich ein – du bist sofort dran.', 'Tragen Sie sich ein – Sie sind sofort an der Reihe.'))]));
     skip.style.display = c && c.phase === 'live' ? '' : 'none';
+    if (c && keyOk(c.vid)) nowLine.append(h('div', { class: 'keyctl' }, h('span', { class: 'lbl' }, 'Tonart'),
+      h('button', { class: 'btn icon', onclick: () => store.dispatch('key', { id: c.id, k: (c.key || 0) - 1 }, { from: 'kiosk' }) }, '−'), h('b', null, keyLabel(c.key)),
+      h('button', { class: 'btn icon', onclick: () => store.dispatch('key', { id: c.id, k: (c.key || 0) + 1 }, { from: 'kiosk' }) }, '+'), h('span', { class: 'mut' }, T('tiefer oder höher singen', 'tiefer oder höher singen'))));
     put(qBox, h('h2', null, 'Danach ', h('span', { class: 'count' }, s.queue.length || '')),
       !s.queue.length ? h('p', { class: 'mut' }, 'Noch niemand – die Liste ist frei.') : h('div', { class: 'list' }, s.queue.map((e, i) => h('div', { class: 'qrow' }, h('span', { class: 'num' }, i + 1), entryLine(e),
         admin ? h('button', { class: 'btn ghost icon', onclick: () => dj('remove', { id: e.id }) }, ico('x')) : h('span', { class: 'mut' }, '~' + waitMin(s, i) + ' Min.')))));
