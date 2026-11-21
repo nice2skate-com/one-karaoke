@@ -75,6 +75,26 @@ function legalFoot(extra) {
       h('button', { class: 'linkbtn', onclick: privacyNote }, 'Hinweis zur Datenverarbeitung')),
     h('div', null, 'ONE — aus einer Hand. Einmalig erlebt.'));
 }
+// Event-Branding: Kundenlogo (wahlweise auf hellem Grund) neben dem DJ-Logo
+function custLogo(store, cls) {
+  const src = store.brand && store.brand(); if (!src) return null;
+  const plate = !store.state || store.state.settings.logoPlate !== false;
+  return h('span', { class: 'cust' + (plate ? ' plate' : '') + (cls ? ' ' + cls : '') }, h('img', { src, alt: 'Logo des Gastgebers' }));
+}
+function brandLock(store, size) { const c = custLogo(store, size); return c ? h('div', { class: 'lockup ' + (size || '') }, logo(size), h('i', { class: 'lockdiv' }), c) : logo(size); }
+// Zahlen und Top-Songs des Abends aus dem Verlauf dieses Raums
+function evening(s) {
+  const sung = (s.history || []).filter(x => x.sung), by = {};
+  for (const x of sung) { const k = lc(x.t) + '|' + lc(x.a); const e = by[k] || (by[k] = { t: x.t, a: x.a, n: 0, ts: 0 }); e.n++; e.ts = Math.max(e.ts, x.ts || 0); }
+  return { perf: sung.length, singers: new Set(sung.map(x => lc(x.name))).size, songs: Object.keys(by).length, top: Object.values(by).sort((a, b) => b.n - a.n || b.ts - a.ts).slice(0, 5) };
+}
+// CSV-Datei speichern (Semikolon für deutsches Excel, Formeln entschärft)
+function csvDownload(name, rows) {
+  const esc = v => { v = String(v == null ? '' : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const a = h('a', { href: URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(esc).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' })), download: name });
+  document.body.append(a); a.click(); a.remove();
+}
+const fileDay = () => new Date().toISOString().slice(0, 10);
 const songLine = e => e.t + (e.a ? ' · ' + e.a : '');
 const logo = cls => h('img', { class: 'logo ' + (cls || ''), src: 'assets/logo.svg', alt: 'DJ KOLJA ONE' });
 function toast(msg, kind) {
@@ -310,6 +330,7 @@ function Stage(root, store, opt) {
     else mode = 'video';
     // Läuft gerade ein Karaoke-Video, bleibt es sichtbar (der Text wird gebraucht): Das Battle erscheint dann nur als schmale Leiste oben
     const gv = gameView(s.game), over = !!gv && gv.type === 'battle' && mode === 'video';
+    if (s.closing && !gv && mode !== 'video' && mode !== 'blocked') mode = 'closing';
     if (gv && !over) mode = 'game';
     const ovKey = over ? [gv.phase, gv.a, gv.b, gv.ca, gv.cb, !!gUrl].join('|') : '';
     if (ovKey !== lastOv) {
@@ -342,11 +363,17 @@ function Stage(root, store, opt) {
     if (s.note && now - s.note.at < 7000 && s.note.at !== render.noteAt) { render.noteAt = s.note.at; showHint(s.note.text, 7000); }
 
     const lobby = gv && gv.phase === 'lobby'; clearTimeout(lobbyT); if (lobby) lobbyT = setTimeout(() => render(store.state), 1000);
-    const k = [mode, lobby && Math.ceil((LOBBY_MS - (Date.now() - gv.pAt)) / 1000), gv && JSON.stringify(gv), gv && JSON.stringify(screenPick), c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
+    const k = [mode, S.eventName, S.logoPlate, S.reviewUrl, (store.brand() || '').length, mode === 'closing' && (s.history || []).length, lobby && Math.ceil((LOBBY_MS - (Date.now() - gv.pAt)) / 1000), gv && JSON.stringify(gv), gv && JSON.stringify(screenPick), c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
     if (k !== key) {
       key = k; clearTimeout(timer); clearInterval(timer);
       const kids = [];
-      if (mode === 'game') {
+      if (mode === 'closing') {
+        const ev = evening(s), rv = S.reviewUrl;
+        kids.push(brandLock(store, 'big'), h('div', { class: 'eyebrow' }, S.eventName || 'Karaoke'), h('h1', null, 'Danke fürs Mitsingen!'),
+          ev.perf ? h('p', { class: 'sub' }, ev.perf + (ev.perf === 1 ? ' Auftritt' : ' Auftritte') + ' · ' + ev.singers + (ev.singers === 1 ? ' Stimme' : ' Stimmen') + ' · ' + ev.songs + (ev.songs === 1 ? ' Song' : ' Songs')) : null,
+          h('div', { class: 'closerow' }, ev.top.length ? h('div', { class: 'tops' }, h('div', { class: 'eyebrow' }, 'Top-Songs des Abends'), h('ol', { class: 'toplist songs' }, ev.top.map((x, i) => h('li', null, h('span', { class: 'num' }, i + 1), h('span', { class: 'grow' }, x.t, h('em', null, x.a ? ' · ' + x.a : '')), x.n > 1 ? h('b', null, x.n + '×') : null)))) : null,
+            rv ? h('div', { class: 'review' }, qrBox(rv), h('span', null, T('Wie hat es euch gefallen? Hier bewerten.', 'Wie hat es Ihnen gefallen? Hier bewerten.'))) : null));
+      } else if (mode === 'game') {
         const qk = gv.at + ':' + gv.qi, kq = opt.kiosk && gv.type === 'quiz';
         kids.push(...gameCard(gv, gUrl, T, kq ? i => { screenPick[qk] = i; store.dispatch('answer', { i, name: 'Am Bildschirm' }, { from: 'kiosk', cid: 'bildschirm' }); render(store.state); } : null, opt.kiosk ? screenPick[qk] : undefined,
           kq ? { onEnd: () => store.dispatch('game', { op: 'end' }, { from: 'kiosk' }), onBegin: () => store.dispatch('game', { op: 'begin' }, { from: 'kiosk' }) } : null).filter(Boolean));
@@ -355,7 +382,7 @@ function Stage(root, store, opt) {
         kids.push(h('div', { class: 'eyebrow' }, 'Applaus für'), h('h1', null, s.last.name), h('p', { class: 'sub' }, songLine(s.last)));
         timer = setTimeout(() => render(store.state), s.last.at + 6600 - now);
       } else if (mode === 'idle') {
-        kids.push(logo('big'), h('div', { class: 'eyebrow' }, 'Karaoke'),
+        kids.push(brandLock(store, 'big'), h('div', { class: 'eyebrow' }, S.eventName ? 'Karaoke · ' + S.eventName : 'Karaoke'),
           h('h1', { class: 'soft' }, opt.kiosk ? T('Such dir deinen Song aus.', 'Suchen Sie sich Ihren Song aus.') : T('Die Bühne gehört euch.', 'Die Bühne gehört Ihnen.')));
         if (!S.signupOpen) kids.push(h('p', { class: 'sub' }, 'Die Anmeldung ist gerade geschlossen.'));
         else if (gUrl) kids.push(h('div', { class: 'qrrow' }, qrBox(gUrl), h('ol', { class: 'steps' }, h('li', null, 'QR-Code scannen'), h('li', null, 'Namen eintragen, Song wählen'), h('li', null, T('Aufgerufen werden – und singen', 'Aufgerufen werden – und singen')))));
@@ -386,7 +413,7 @@ function Stage(root, store, opt) {
     bar.classList.toggle('off', !showBar);
     if (showBar) {
       const upcoming = (applause && c ? [c] : []).concat(s.queue).slice(0, 3).map(q => q.name).join('  ·  ');
-      put(bar, opt.kiosk ? null : logo('mini'),
+      put(bar, opt.kiosk ? null : h('div', { class: 'barlogos' }, logo('mini'), custLogo(store, 'mini')),
         h('div', { class: 'lines' },
           h('div', { class: 'ln' }, h('b', null, applause ? 'Applaus' : 'Jetzt'), applause ? h('span', null, s.last.name, h('em', null, '  ' + songLine(s.last))) : c ? h('span', null, c.name, h('em', null, '  ' + songLine(c))) : h('span', { class: 'mut' }, '–')),
           h('div', { class: 'ln' }, S.ticker ? [h('b', null, 'Info'), h('span', null, S.ticker)] : [h('b', null, 'Danach'), h('span', { class: upcoming ? '' : 'mut' }, upcoming || (S.signupOpen ? T('Noch frei – traut euch.', 'Noch frei – trauen Sie sich.') : '–'))])),
@@ -754,6 +781,7 @@ function viewDJ(app, room) {
       store.local ? h('button', { class: 'btn', onclick: () => songbookDlg(store) }, 'Songbuch') : null,
       h('button', { class: 'btn', onclick: gamesDlg }, 'Spiele'),
       store.local && cloud.url ? h('button', { class: 'btn', onclick: statsDlg }, 'Statistik') : null,
+      h('button', { class: 'btn', onclick: () => closingDlg(store) }, 'Abschluss'),
       h('button', { class: 'btn', onclick: () => settingsDlg(store) }, 'Einstellungen')),
     h('main', { class: 'cols' },
       h('section', { class: 'panel' }, h('h2', null, 'Song aufnehmen'), Picker(store, 'dj')),
@@ -771,11 +799,35 @@ function viewDJ(app, room) {
 }
 
 // ============ Einstellungen ============
+// Kundenlogo hochladen: wird auf höchstens 640 × 240 Pixel verkleinert und auf diesem Rechner gespeichert
+function logoField(store, S, set) {
+  const prev = h('div', { class: 'logoprev' }), msg = h('small');
+  const draw = () => put(prev, store.brand() ? custLogo(store, 'small') : h('span', { class: 'mut' }, 'Kein Logo hinterlegt.'));
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/svg+xml', style: 'display:none', onchange: async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const url = URL.createObjectURL(f), img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Bild lässt sich nicht lesen')); i.src = url; });
+      const w0 = img.naturalWidth || 640, h0 = img.naturalHeight || 240, sc = Math.min(1, 640 / w0, 240 / h0), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w0 * sc)); c.height = Math.max(1, Math.round(h0 * sc)); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      let data = c.toDataURL('image/webp', .9); if (!/^data:image\/webp/.test(data)) data = c.toDataURL('image/png');
+      if (data.length > 380000) return (msg.textContent = 'Das Logo ist auch verkleinert noch zu groß. Bitte eine einfachere Datei wählen.');
+      store.setBrand(data); msg.textContent = 'Logo gespeichert.'; draw();
+    } catch (err) { msg.textContent = err.message; }
+    e.target.value = '';
+  } });
+  draw();
+  return h('div', { class: 'stack' }, h('span', { class: 'lbl' }, 'Logo des Gastgebers'), prev,
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn', onclick: () => file.click() }, 'Logo wählen'), h('button', { class: 'btn ghost', onclick: () => { store.setBrand(''); draw(); } }, 'Entfernen'), file), msg,
+    toggle('Logo auf hellem Grund zeigen', S.logoPlate !== false, v => { set({ logoPlate: v }).then(draw); }, 'Für dunkle Logos. Ausschalten bei hellen Logos mit transparentem Hintergrund.'));
+}
 function settingsDlg(store) {
   const s = store.state; if (!s) return; const S = s.settings;
   const set = x => store.dispatch('set', x).then(r => { if (!r.ok && r.msg) toast(r.msg, 'warn'); });
   const inp = (val, onchange, attrs) => h('input', Object.assign({ class: 'in', value: val == null ? '' : val, onchange: e => onchange(e.target.value.trim()) }, attrs || {}));
   const kids = [
+    h('h4', null, 'Veranstaltung'),
+    field('Name der Veranstaltung', inp(S.eventName, v => set({ eventName: v }), { placeholder: 'z. B. Sommerfest Musterfirma', maxLength: 60 }), 'Erscheint auf dem Bühnenbild, im Kiosk und auf den Handys.'),
+    store.setBrand && store.local ? logoField(store, S, set) : null,
     h('h4', null, 'Ablauf'),
     field('Name des Raums', inp(s.name, v => set({ name: v }))),
     toggle('Namen und Wünsche filtern', S.filter !== false, v => set({ filter: v }), 'Weist Beleidigungen und Obszönes bei Gästen ab, bevor es auf dem Bildschirm erscheint.'),
@@ -820,22 +872,45 @@ function settingsDlg(store) {
   modal('Einstellungen', h('div', { class: 'stack settings' }, kids), { wide: true });
 }
 
+// ============ Abschluss des Abends ============
+function closingDlg(store) {
+  const s = store.state; if (!s) return; const S = s.settings;
+  const set = x => store.dispatch('set', x).then(r => { if (!r.ok && r.msg) toast(r.msg, 'warn'); return r; });
+  const ev = evening(s), names = toggle('Mit Namen der Gäste', false, () => { });
+  const rv = h('input', { class: 'in', value: S.reviewUrl || '', placeholder: 'https://…', onchange: e => set({ reviewUrl: e.target.value.trim() }).then(() => { if (e.target.value.trim() && !store.state.settings.reviewUrl) toast('Bitte eine vollständige Adresse mit https:// eintragen.', 'warn'); }) });
+  const exp = () => {
+    const withN = names.querySelector('input').checked, rows = [['Uhrzeit', 'Titel', 'Interpret'].concat(withN ? ['Name'] : [], ['Gesungen'])];
+    for (const x of (store.state.history || []).slice().reverse()) rows.push([new Date(x.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }), x.t, x.a].concat(withN ? [x.name] : [], [x.sung ? 'ja' : 'nein']));
+    if (rows.length < 2) return toast('Der Verlauf ist noch leer.', 'warn');
+    csvDownload('karaoke-' + slug(store.state.name) + '-' + fileDay() + '.csv', rows);
+  };
+  modal('Abschluss des Abends', h('div', { class: 'stack settings' },
+    h('p', { class: 'mut' }, ev.perf ? 'Bisher ' + ev.perf + ' Auftritte, ' + ev.singers + ' verschiedene Stimmen, ' + ev.songs + ' verschiedene Songs.' : 'Noch keine Auftritte in diesem Raum.'),
+    toggle('Abschlussfolie zeigen', !!s.closing, v => store.dispatch('closing', { on: v }), 'Bühnenbild: Dank, Zahlen und Top-Songs des Abends, dazu der QR-Code zur Bewertung. Auf den Handys erscheint ein Dank mit Bewertungs-Knopf. Ein laufender Song wird nicht verdeckt.'),
+    field('Link zur Bewertung', rv, 'Zum Beispiel dein Google-Bewertungslink. Ohne Link erscheint kein QR-Code.'),
+    h('h4', null, 'Als Datei'),
+    h('p', { class: 'mut' }, 'Alle Songs dieses Raums in der Reihenfolge des Abends, als Tabelle für Excel oder Numbers.'),
+    names, h('small', null, 'Namen nur exportieren, wenn du sie wirklich brauchst – sie sind personenbezogene Daten der Gäste.'),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Abend als Datei speichern'))), { wide: true });
+}
+
 // ============ Statistik ============
 function statsDlg() {
   const body = h('div', { class: 'stack' }), list = h('div', { class: 'list scroll tall' }), info = h('p', { class: 'mut' });
-  let days = 0;
+  let days = 0, last = null;
   const tabs = h('div', { class: 'chips' });
+  const save = h('button', { class: 'btn', onclick: () => { if (!last || !last.rows.length) return toast('Keine Einträge zum Speichern.', 'warn'); csvDownload('karaoke-statistik-' + (days ? days + '-tage-' : 'gesamt-') + fileDay() + '.csv', [['Platz', 'Titel', 'Interpret', 'Anzahl']].concat(last.rows.map((x, i) => [i + 1, x.title, x.artist, x.n]))); } }, 'Als CSV speichern');
   async function load() {
     put(tabs, [[0, 'Gesamt'], [365, '12 Monate'], [30, '30 Tage'], [1, 'Heute']].map(([d, l]) => h('button', { class: 'chip' + (days === d ? ' on' : ''), onclick: () => { days = d; load(); } }, l)));
     if (!dj.isDj) { info.textContent = 'Die Statistik ist nur mit DJ-Anmeldung sichtbar (Einstellungen → DJ-Anmeldung).'; put(list); return; }
     info.textContent = 'Lade …';
     try {
-      const r = await playStats(days);
+      const r = last = await playStats(days);
       info.textContent = r.total ? r.total + ' gesungene Titel, ' + r.rows.length + ' verschiedene. Gezählt wird auf Geräten, an denen ein DJ angemeldet ist – ohne Namen der Gäste.' : 'Noch keine Einträge in diesem Zeitraum.';
       put(list, r.rows.map((x, i) => h('div', { class: 'qrow' }, h('span', { class: 'num' }, i + 1), h('div', { class: 'grow' }, h('div', { class: 'st' }, x.title), h('div', { class: 'sa' }, x.artist)), h('b', null, x.n + '×'))));
     } catch (e) { info.textContent = 'Die Statistik konnte nicht geladen werden: ' + e.message; }
   }
-  body.append(tabs, info, list); modal('Statistik', body, { wide: true }); load();
+  body.append(tabs, info, list, h('div', { class: 'row' }, save)); modal('Statistik', body, { wide: true }); load();
 }
 
 // ============ Songbuch pflegen ============
@@ -972,7 +1047,8 @@ function viewKiosk(app, room) {
   const left = h('div', { class: 'kleft' }), qBox = h('div'), nowLine = h('div', { class: 'know' }), adminBox = h('div');
   let admin = false, taps = 0, tapT = null;
   const dj = (a, x) => store.dispatch(a, x, { from: 'dj' });
-  const brand = h('div', { class: 'kbrand', onclick: () => { taps++; clearTimeout(tapT); tapT = setTimeout(() => taps = 0, 1500); if (taps >= 5) { taps = 0; unlock(); } } }, logo(), h('span', { class: 'eyebrow' }, 'Karaoke'));
+  const kcust = h('span'), keb = h('span', { class: 'eyebrow' }, 'Karaoke');
+  const brand = h('div', { class: 'kbrand', onclick: () => { taps++; clearTimeout(tapT); tapT = setTimeout(() => taps = 0, 1500); if (taps >= 5) { taps = 0; unlock(); } } }, h('div', { class: 'kbrandl' }, logo(), kcust), keb);
   function unlock() {
     if (admin) { admin = false; return render(store.state); }
     const inp = h('input', { class: 'in big', inputMode: 'numeric', placeholder: 'PIN', type: 'password' });
@@ -995,6 +1071,7 @@ function viewKiosk(app, room) {
 
   function render(s) {
     const c = s.current, T = (du, sie) => s.settings.formal ? sie : du;
+    const kc = custLogo(store, 'small'); put(kcust, kc); keb.textContent = s.settings.eventName || 'Karaoke'; keb.style.display = kc ? 'none' : '';
     put(nowLine, ...(c ? [h('span', { class: 'eyebrow' }, c.phase === 'intro' ? 'An der Reihe' : 'Jetzt singt'), h('b', null, c.name), h('span', { class: 'sa' }, songLine(c))] : [h('span', { class: 'eyebrow' }, 'Bühne frei'), h('span', { class: 'sa' }, T('Trag dich ein – du bist sofort dran.', 'Tragen Sie sich ein – Sie sind sofort an der Reihe.'))]));
     skip.style.display = c && c.phase === 'live' ? '' : 'none';
     quizBtn.textContent = s.game ? 'Quiz beenden' : 'Quiz spielen'; quizBtn.style.display = s.game || !c || c.phase !== 'live' ? '' : 'none';
@@ -1067,15 +1144,19 @@ function viewGuest(app, room) {
       reveal && me ? h('p', { class: 'stand' }, 'Platz ' + me.r + ' von ' + g.rank.length + ' · ' + me.p + ' Punkte ', mvMark(me.mv)) : null,
       reveal ? gapLine() : null));
   }
+  const gCust = h('span'), gEvent = h('div', { class: 'eyebrow evname' }), closeBox = h('div');
   let built = false;
   function render(s) {
+    if (s) { put(gCust, custLogo(store, 'small')); gEvent.textContent = s.settings.eventName || ''; }
     if (!s) {
       put(waitBox, h('p', { class: 'mut' }, store.conn === 'none' ? 'Die Anmeldung per Handy ist für diese Veranstaltung nicht eingerichtet. Bitte direkt beim DJ melden.' : store.conn === 'err' ? 'Keine Verbindung – bitte Empfang prüfen.' : 'Verbinde mit der Bühne …'));
       return;
     }
-    if (!built) { built = true; waitBox.remove(); main.append(nowBox, gameBox, mineBox, h('section', { class: 'panel' }, h('h2', null, 'Song aussuchen'), Picker(store, 'guest')), listBox); }
+    if (!built) { built = true; waitBox.remove(); main.append(closeBox, nowBox, gameBox, mineBox, h('section', { class: 'panel' }, h('h2', null, 'Song aussuchen'), Picker(store, 'guest')), listBox); }
     drawGame(s);
     const T = (du, sie) => s.settings.formal ? sie : du, c = s.current, name = lc(LS.get('kk:name', ''));
+    put(closeBox, s.closing ? h('section', { class: 'panel accent' }, h('h2', null, s.settings.eventName || 'Karaoke'), h('div', { class: 'nm' }, 'Danke fürs Mitsingen!'),
+      s.settings.reviewUrl ? [h('p', { class: 'mut' }, T('Wie hat es dir gefallen? Über eine kurze Bewertung freuen wir uns sehr.', 'Wie hat es Ihnen gefallen? Über eine kurze Bewertung freuen wir uns sehr.')), h('a', { class: 'btn primary', href: s.settings.reviewUrl, target: '_blank', rel: 'noopener' }, 'Jetzt bewerten')] : null) : null);
     const mine = e => (e.cid && e.cid === window.KK.CID) || (name && lc(e.name) === name);
     put(nowBox, h('span', { class: 'eyebrow' }, s.name), c ? h('div', null, h('b', null, c.name), ' ', c.phase === 'intro' ? 'ist als Nächstes dran' : 'singt gerade', h('div', { class: 'sa' }, c.t + (c.a ? ' · ' + c.a : ''))) : h('div', { class: 'sa' }, 'Die Bühne ist frei.'),
       !s.settings.signupOpen ? h('div', { class: 'alert' }, 'Die Anmeldung ist gerade geschlossen.') : null);
@@ -1086,7 +1167,7 @@ function viewGuest(app, room) {
       myIn.map(e => h('div', { class: 'qrow' }, h('div', { class: 'grow' }, h('div', { class: 'st' }, e.t), h('div', { class: 'sa' }, 'Wunsch liegt beim DJ')))))] : []));
     put(listBox, h('section', { class: 'panel' }, h('h2', null, 'Reihenfolge'), publicQueue(s, mine)));
   }
-  app.append(h('div', { class: 'page guest' }, h('header', { class: 'top center' }, logo()), waitBox, main, legalFoot()));
+  app.append(h('div', { class: 'page guest' }, h('header', { class: 'top center' }, logo(), gCust), gEvent, waitBox, main, legalFoot()));
   store.on(render); store.onConn(() => { if (!store.state) render(null); });
 }
 

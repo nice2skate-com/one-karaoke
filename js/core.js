@@ -60,7 +60,7 @@ function initState(room, mode) {
     v: 1, rev: 0, room, mode, name: mode === 'kiosk' ? 'Nebenraum' : 'Mainstage',
     settings: {
       signupOpen: true, approve: mode !== 'kiosk', maxPerGuest: 2, autoNext: true, autoStart: 0, fair: true,
-      formal: false, filter: true, blockWords: '', guestSearch: mode === 'kiosk', bar: true, pin: String(Math.floor(1000 + Math.random() * 9000)), ticker: ''
+      formal: false, filter: true, blockWords: '', eventName: '', logoPlate: true, reviewUrl: '', guestSearch: mode === 'kiosk', bar: true, pin: String(Math.floor(1000 + Math.random() * 9000)), ticker: ''
     },
     queue: [], inbox: [], current: null, play: { want: 'pause', seek: null, vol: 100 }, now: { st: 'idle' },
     last: null, note: null, history: [], seen: []
@@ -105,7 +105,7 @@ function finish(s, sung, auto) {
 const GUEST_ACTS = ['add', 'vote', 'answer', 'join'];
 const NAME_NO = 'Dieser Name ist hier leider nicht möglich. Bitte einen anderen wählen.';
 const badText = (t, S) => S.filter !== false && !!(window.KK_FILTER && window.KK_FILTER.bad(t, S.blockWords));
-const SETTABLE = ['filter', 'blockWords', 'karafun', 'signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
+const SETTABLE = ['eventName', 'logoPlate', 'reviewUrl', 'filter', 'blockWords', 'karafun', 'signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
 
 function reduce(s, a, x, m) {
   x = x || {}; m = m || { from: 'dj' };
@@ -184,7 +184,7 @@ function reduce(s, a, x, m) {
       if (x.st === 'paused') s.play.want = 'pause';
       return ok();
     }
-    case 'set': { for (const k of SETTABLE) if (k in x) S[k] = k === 'maxPerGuest' ? Math.max(1, Math.min(9, +x[k] || 1)) : k === 'autoStart' ? Math.max(0, Math.min(60, +x[k] || 0)) : k === 'ticker' ? clean(x[k], 140) : k === 'blockWords' ? clean(x[k], 300) : k === 'pin' ? (clean(x[k], 8) || S.pin) : x[k]; if ('name' in x) s.name = clean(x.name, 30) || s.name; return ok(); }
+    case 'set': { for (const k of SETTABLE) if (k in x) S[k] = k === 'maxPerGuest' ? Math.max(1, Math.min(9, +x[k] || 1)) : k === 'autoStart' ? Math.max(0, Math.min(60, +x[k] || 0)) : k === 'ticker' ? clean(x[k], 140) : k === 'blockWords' ? clean(x[k], 300) : k === 'eventName' ? clean(x[k], 60) : k === 'reviewUrl' ? (/^https:\/\/[^\s"'<>]{4,300}$/.test(String(x[k]).trim()) ? String(x[k]).trim() : '') : k === 'logoPlate' ? !!x[k] : k === 'pin' ? (clean(x[k], 8) || S.pin) : x[k]; if ('name' in x) s.name = clean(x.name, 30) || s.name; return ok(); }
     // Spiele: Battle (Abstimmung zwischen zwei Auftritten) und Musik-Quiz
     case 'game': {
       const g = s.game, now = Date.now();
@@ -239,11 +239,12 @@ function reduce(s, a, x, m) {
       const t = isFinite(ms) && ms >= 0 ? Math.max(Math.max(0, host - 2000), Math.min(host, Math.round(ms))) : host;
       g.ans[m.cid] = { i, t, name }; return ok('Antwort gespeichert.');
     }
+    case 'closing': { s.closing = !!x.on; return ok(); }
     case 'mode': { if (x.mode !== 'kiosk' && x.mode !== 'stage') return fail(); if (s.mode === x.mode) return { ok: false }; s.mode = x.mode; S.approve = x.mode !== 'kiosk'; S.guestSearch = x.mode === 'kiosk'; if (s.name === 'Mainstage' || s.name === 'Nebenraum') s.name = x.mode === 'kiosk' ? 'Nebenraum' : 'Mainstage'; return ok(); }
     case 'clear': {
       if (x.what === 'queue' || x.what === 'all') { s.queue = []; s.inbox = []; }
       if (x.what === 'history' || x.what === 'all') { s.history = []; s.last = null; }
-      if (x.what === 'all') { s.current = null; s.play.want = 'pause'; s.now = { st: 'idle' }; }
+      if (x.what === 'all') { s.closing = false; s.current = null; s.play.want = 'pause'; s.now = { st: 'idle' }; }
       return ok();
     }
   }
@@ -601,7 +602,7 @@ class LocalStore {
       if (m.t === 'state') { this.state = LS.get(this.key) || this.state; this.emit(); }
       else if (m.t === 'tick') this.tickFns.forEach(f => f(m));
       else if (m.t === 'alive') this.aliveFns.forEach(f => f(m));
-      else if (m.t === 'book') this.emit();
+      else if (m.t === 'book' || m.t === 'brand') this.emit();
     };
   }
   on(f) { this.fns.push(f); f(this.state); }
@@ -621,6 +622,8 @@ class LocalStore {
   onAlive(f) { this.aliveFns.push(f); }
   alive(m) { this.bc.postMessage(m); this.aliveFns.forEach(f => f(m)); }
   bookChanged() { this.bc.postMessage({ t: 'book' }); this.emit(); if (this.bus) this.bus.send({ t: 'book', b: bookPub() }); }
+  brand() { return LS.get('kk:brand:' + this.room, '') || ''; }
+  setBrand(logo) { LS.set('kk:brand:' + this.room, logo || ''); this.bc.postMessage({ t: 'brand' }); this.emit(); if (this.bus) this.bus.send({ t: 'brand', logo: logo || '' }); }
   search(q) { return ytSearch(q); }
   book() { return bookList(); }
   canSearch() { return !!cfg.ytKey || MOCK; }
@@ -640,7 +643,7 @@ class LocalStore {
     this.on(s => { if (s.rev !== lastRev) { clearTimeout(pend); pend = setTimeout(push, 150); } });
     bus.on(async m => {
       if (!m || !m.t) return;
-      if (m.t === 'hello') { devMark(this.room, clean(m.cid, 20)); if (!helloT) helloT = setTimeout(() => { helloT = null; push(); bus.send({ t: 'book', b: bookPub() }); }, 700); return; }
+      if (m.t === 'hello') { devMark(this.room, clean(m.cid, 20)); if (!helloT) helloT = setTimeout(() => { helloT = null; push(); bus.send({ t: 'book', b: bookPub() }); if (this.brand()) bus.send({ t: 'brand', logo: this.brand() }); }, 700); return; }
       if (m.t === 'act') {
         const isDj = m.pin && String(m.pin) === String(this.state.settings.pin);
         if (!isDj && !GUEST_ACTS.includes(m.a)) return bus.send({ t: 'ack', rid: m.rid, ok: false, pin: true, msg: 'PIN fehlt oder ist falsch.' });
@@ -684,6 +687,7 @@ class RemoteStore {
       if (!m) return;
       if (m.t === 'state') { this.state = m.s; this.setConn('on'); this.emit(); }
       else if (m.t === 'book') { this._book = bookFromPub(m.b); this.emit(); }
+      else if (m.t === 'brand') { const l = String(m.logo || ''); this._brand = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(l) && l.length < 400000 ? l : ''; this.emit(); }
       else if (m.t === 'ack' || m.t === 'results') { const p = this.pending[m.rid]; if (p) { delete this.pending[m.rid]; p(m); } }
     });
     const hello = () => this.bus.send({ t: 'hello', cid: CID });
@@ -703,6 +707,8 @@ class RemoteStore {
   search(q) { return this.req({ t: 'search', q }, 14000).then(r => { if (!r.ok) throw new Error(r.msg); return r.items; }); }
   book() { return this._book; }
   bookChanged() { }
+  brand() { return this._brand || ''; }
+  setBrand() { }
   canSearch() { return !!(this.state && this.state.hasKey && (this.pin || this.state.settings.guestSearch)); }
   host() { }
 }

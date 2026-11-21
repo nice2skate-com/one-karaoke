@@ -237,3 +237,25 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 .res .small { font-size: .85rem; }
 .qtime.phone { position: relative; height: 26px; border-radius: 13px; margin-top: 4px; } .qtime.phone i { animation: none; transition: width 1s linear; } .qtime.phone span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8rem; font-weight: 600; color: var(--offwhite); }
 .gap { margin: 0; }
+
+/* Event-Branding: Kundenlogo neben dem DJ-Logo */
+.lockup { display: inline-flex; align-items: center; gap: 1.6em; } .lockup .logo { margin-bottom: 0 !important; }
+.lockdiv { display: block; width: 1px; align-self: stretch; background: var(--line, rgba(244,240,232,.2)); }
+.cust { display: inline-flex; align-items: center; justify-content: center; } .cust img { display: block; width: auto; max-width: 100%; object-fit: contain; }
+.cust.plate { background: #F4F0E8; border-radius: 8px; padding: .35em .6em; }
+.cust img { height: 30px; max-width: 160px; }
+.cust.small img { height: 28px; max-width: 140px; }
+.cust.mini img { height: 2.6vh; min-height: 16px; max-width: 16vh; } .cust.mini.plate { padding: .3vh .6vh; border-radius: .5vh; }
+.cust.big img { height: clamp(40px, 8cqh, 96px); max-width: 32cqw; }
+.card .lockup.big { margin-bottom: 3cqh; }
+.barlogos { display: flex; align-items: center; gap: 1.2vh; }
+.kbrandl { display: flex; align-items: center; gap: 12px; }
+header.top.center { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.evname { text-align: center; margin: -4px 0 8px; }
+.logoprev { min-height: 40px; display: flex; align-items: center; }
+/* Abschlussfolie */
+.closerow { display: flex; gap: 4cqw; align-items: center; justify-content: center; width: 100%; margin-top: 2cqh; }
+.closerow .tops { flex: 1; max-width: 60cqw; } .closerow .toplist { max-width: none; } .closerow .toplist em { color: var(--grey); font-style: normal; }
+.review { display: flex; flex-direction: column; align-items: center; gap: 1.2cqh; color: var(--grey); font-size: clamp(.8rem, 2.2cqh, 1.4rem); max-width: 30cqw; text-align: center; }
+.closerow .toplist .grow { text-align: left; }
+.kbrand .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
