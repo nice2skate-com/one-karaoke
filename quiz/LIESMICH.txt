@@ -5,3 +5,15 @@ Daraus bildet die App die richtige Antwort. Mindestens vier Dateien, besser drei
 
 Abgespielt wird nur, wenn die App lokal über start-mac.command läuft.
 Der Ordner ist von der Versionsverwaltung ausgenommen – die Dateien werden nicht hochgeladen.
+
+Musik zur Anmeldezeit (eine Minute vor dem Quiz):
+Die App nimmt ein Stück, dessen Dateiname zum Quiz passt – zum Beispiel beim Quiz
+"Queen" eine Datei mit "Queen" im Namen. Eine Datei, die mit "lobby" beginnt
+(z. B. "lobby - Wartemusik.mp3"), wird genommen, wenn nichts Passendes da ist.
+
+Bilder: Unterordner "bilder" anlegen.
+  <Quiz-Kennung>.jpg            Bild zum ganzen Quiz, z. B. queen.jpg
+  <Quiz-Kennung>-<Nummer>.jpg   Bild zu einer Frage, z. B. queen-3.jpg
+Erlaubt sind JPG, PNG und WebP. Die Quiz-Kennungen:
+80er, 90er, 2000er, deutsch, schlager, rock, queen, abba, beatles, ikonen, film,
+disney, esc, weihnachten, sommer, herkunft, wissen, wersingt, aktuell, oldies

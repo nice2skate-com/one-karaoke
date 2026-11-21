@@ -201,3 +201,6 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 .qtime { width: 100%; height: 1cqh; min-height: 5px; background: var(--line); border-radius: 6px; overflow: hidden; } .qtime i { display: block; height: 100%; background: var(--bronze); animation: qshrink linear forwards; }
 @keyframes qshrink { from { width: 100%; } to { width: 0; } }
 .card button.qa { cursor: pointer; }
+.lobby { display: flex; align-items: center; justify-content: center; gap: 6cqw; } .lobby .count { font-size: clamp(3rem, 22cqh, 13rem); font-weight: 600; line-height: 1; color: var(--bronze); min-width: 1.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.qimg { max-height: 30cqh; max-width: 70cqw; border-radius: 1.4cqh; object-fit: cover; }
+.btn.endq { font-size: clamp(.8rem, 2cqh, 1.1rem); }

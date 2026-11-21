@@ -102,14 +102,14 @@ function finish(s, sung, auto) {
   s.current = null; s.play.want = 'pause'; s.play.seek = null; s.now = { st: 'idle' };
   if (auto !== false && s.settings.autoNext && s.queue.length) toStage(s);
 }
-const GUEST_ACTS = ['add', 'vote', 'answer'];
+const GUEST_ACTS = ['add', 'vote', 'answer', 'join'];
 const SETTABLE = ['karafun', 'signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
 
 function reduce(s, a, x, m) {
   x = x || {}; m = m || { from: 'dj' };
   const S = s.settings, dj = m.from === 'dj' || m.from === 'player';
   if (m.rid) { s.seen = s.seen || []; if (s.seen.includes(m.rid)) return { ok: false, dup: true }; s.seen.push(m.rid); if (s.seen.length > 80) s.seen.shift(); }
-  if (!dj && !GUEST_ACTS.includes(a) && !(m.from === 'kiosk' && (a === 'play' || a === 'next' || (a === 'key' && s.current && x.id === s.current.id) || (a === 'game' && ['quiz', 'mquiz', 'end'].includes(x.op))))) return fail('Nicht erlaubt.');
+  if (!dj && !GUEST_ACTS.includes(a) && !(m.from === 'kiosk' && (a === 'play' || a === 'next' || (a === 'key' && s.current && x.id === s.current.id) || (a === 'game' && ['quiz', 'mquiz', 'end', 'begin'].includes(x.op))))) return fail('Nicht erlaubt.');
   const find = id => s.queue.find(q => q.id === id) || (s.current && s.current.id === id ? s.current : null);
   switch (a) {
     case 'add': {
@@ -183,14 +183,15 @@ function reduce(s, a, x, m) {
     case 'game': {
       const g = s.game, now = Date.now();
       if (x.op === 'battle') { if (!clean(x.a, 28) || !clean(x.b, 28)) return fail('Bitte beide Namen eintragen.'); s.game = { type: 'battle', a: clean(x.a, 28), b: clean(x.b, 28), phase: 'vote', votes: {}, at: now }; return ok(); }
-      if (x.op === 'quiz') { if (!quizFind(x.id)) return fail('Quiz nicht gefunden.'); s.game = { type: 'quiz', id: x.id, qi: 0, phase: 'q', qAt: now, pAt: now, ans: {}, scores: {}, at: now, auto: !!x.auto }; return ok(); }
+      if (x.op === 'quiz') { if (!quizFind(x.id)) return fail('Quiz nicht gefunden.'); s.game = { type: 'quiz', id: x.id, qi: 0, phase: 'lobby', qAt: now, pAt: now, ans: {}, scores: {}, at: now, auto: !!x.auto }; return ok(); }
       if (x.op === 'mquiz') { // Song erkennen: Fragen entstehen aus den eigenen Musikdateien
         const cq = (Array.isArray(x.q) ? x.q : []).slice(0, 12).map(q => ({ f: String(q.f || ''), c: clean(q.c, 110), w: (q.w || []).slice(0, 3).map(v => clean(v, 110)) })).filter(q => QUIZ_RE.test(q.f) && q.c && q.w.length === 3);
         if (cq.length < 2) return fail('Für „Song erkennen“ werden mindestens vier Musikdateien im Ordner „quiz“ gebraucht.');
-        s.game = { type: 'quiz', id: 'musik', cq, qi: 0, phase: 'q', qAt: now, pAt: now, ans: {}, scores: {}, at: now, auto: !!x.auto, playN: 0 }; return ok();
+        s.game = { type: 'quiz', id: 'musik', cq, qi: 0, phase: 'lobby', qAt: now, pAt: now, ans: {}, scores: {}, at: now, auto: !!x.auto, playN: 0 }; return ok();
       }
       if (!g) return fail();
       if (x.op === 'end') { s.game = null; return ok(); }
+      if (x.op === 'begin' && g.type === 'quiz') { if (g.phase !== 'lobby') return { ok: false }; g.phase = 'q'; g.qAt = g.pAt = now; g.ans = {}; return ok(); }
       if (x.op === 'replay' && g.cq) { g.playN = (g.playN || 0) + 1; return ok(); }
       if (x.op === 'reveal') {
         if (g.type === 'battle') { g.phase = 'result'; return ok(); }
@@ -207,6 +208,7 @@ function reduce(s, a, x, m) {
       return fail();
     }
     case 'vote': { const g = s.game; if (!g || g.type !== 'battle' || g.phase !== 'vote') return fail('Die Abstimmung ist beendet.'); if (x.side !== 'a' && x.side !== 'b') return fail(); g.votes[m.cid || 'x' + uid()] = x.side; return ok('Stimme gezählt.'); }
+    case 'join': { const g = s.game, name = clean(x.name, 28); if (!g || g.type !== 'quiz') return fail('Gerade läuft kein Quiz.'); if (!m.cid || !name) return fail('Bitte einen Namen eintragen.'); const sc = g.scores[m.cid] || (g.scores[m.cid] = { name, p: 0 }); sc.name = name; return ok('Du bist dabei.'); }
     case 'answer': {
       const g = s.game; if (!g || g.type !== 'quiz' || g.phase !== 'q') return fail('Diese Frage ist schon geschlossen.');
       const name = clean(x.name, 28), i = Math.round(+x.i); if (!m.cid || !name) return fail('Bitte zuerst einen Namen eintragen.'); if (!(i >= 0 && i <= 3)) return fail();
@@ -237,7 +239,7 @@ function gameView(g) {
   if (!g || g.view) return g || null;
   if (g.type === 'battle') { const v = Object.values(g.votes); return { view: 1, type: 'battle', a: g.a, b: g.b, phase: g.phase, at: g.at, ca: v.filter(x => x === 'a').length, cb: v.filter(x => x === 'b').length }; }
   const an = Object.values(g.ans);
-  return { view: 1, type: 'quiz', id: g.id, qi: g.qi, phase: g.phase, at: g.at, qAt: g.qAt, auto: !!g.auto, cq: g.cq ? g.cq.map(q => ({ c: q.c, w: q.w })) : undefined, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, top: Object.values(g.scores).sort((x, y) => y.p - x.p).slice(0, 8) };
+  return { view: 1, type: 'quiz', id: g.id, qi: g.qi, phase: g.phase, at: g.at, qAt: g.qAt, pAt: g.pAt, names: g.phase === 'lobby' ? Object.values(g.scores).map(x => x.name).slice(0, 40) : undefined, auto: !!g.auto, cq: g.cq ? g.cq.map(q => ({ c: q.c, w: q.w })) : undefined, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, top: Object.values(g.scores).sort((x, y) => y.p - x.p).slice(0, 8) };
 }
 function pub(s) { const c = JSON.parse(JSON.stringify(s)); delete c.settings.pin; delete c.seen; c.game = gameView(s.game); c.history = c.history.slice(0, 20); c.hasKey = !!cfg.ytKey || MOCK; return c; }
 function waitMin(s, idx) { let sec = s.current ? 150 : 0; for (let i = 0; i < idx; i++) sec += (s.queue[i].dur || 230) + 50; return Math.max(1, Math.round(sec / 60)); }
@@ -586,7 +588,7 @@ window.KK = {
   initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
   LocalStore, RemoteStore, dj, cloudBook, playStats,
   // Mit Cloud-Songbuch darf nur der angemeldete DJ das Songbuch ändern
-  keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView,
+  listDir, keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView,
   canEditBook: () => !cloud.url || MOCK || dj.isDj
 };
 })();

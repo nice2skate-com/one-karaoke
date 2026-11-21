@@ -101,6 +101,8 @@ Beides startest du in der Konsole über **Spiele**. Mitgemacht wird am Handy üb
 - Punkte: 100 für die richtige Antwort plus bis zu 50 für Schnelligkeit (innerhalb von 20 Sekunden).
 - **Song erkennen (mit Musik):** eigene Musikdateien in den Ordner `quiz` legen, Dateiname `Interpret - Titel.mp3`, mindestens vier Stücke. Die App muss lokal laufen (`start-mac.command`, unter Windows `start-windows.bat` mit installiertem Python). Das Bühnenbild spielt je Frage 20 Sekunden aus der Mitte des Stücks, zur Wahl stehen der richtige Titel und drei andere. „Nochmal anspielen“ wiederholt den Ausschnitt.
 - **Automatisch weiter:** Schalter im Spiele-Dialog – 20 Sekunden pro Frage, dann Auflösung und nächste Frage ohne Knopfdruck.
+- **Anmeldezeit:** Jedes Quiz beginnt mit einer Minute zum Anmelden: Countdown und QR-Code auf dem Bühnenbild, dazu Musik aus dem Ordner `quiz`, die zum Thema passt. „Jetzt starten“ (Konsole) bzw. „Sofort starten“ (Kiosk) kürzt ab.
+- **Bilder:** eigene Bilder in `quiz/bilder` legen – `queen.jpg` für das ganze Quiz, `queen-3.jpg` für Frage 3. Die Kennungen stehen in `quiz/LIESMICH.txt`. Bilder erscheinen nur im lokalen Betrieb und nur auf Bühnenbild und Kiosk.
 - **Im Kiosk:** Knopf „Quiz spielen“ rechts. Das Quiz läuft von selbst; geantwortet wird direkt am Bildschirm (als ein gemeinsames Team) oder per Handy über den QR-Code. „Quiz beenden“ bricht ab.
 - Eigene Fragen: Datei `js/quiz.js`, Aufbau steht oben in der Datei.
 
