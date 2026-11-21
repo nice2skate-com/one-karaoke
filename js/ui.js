@@ -515,7 +515,7 @@ function Picker(store, role) {
   // Freier Wunsch
   const wt = h('input', { class: 'in', placeholder: 'Titel' }), wa = h('input', { class: 'in', placeholder: 'Interpret' });
   const panes = {
-    book: h('div', { class: 'pane' }, bq, chips, blist),
+    book: h('div', { class: 'pane' }, role === 'dj' ? h('div', { class: 'row wrap' }, bq, toggle('Nur Titel mit Video', LS.get('kk:onlyVid', false), v => { LS.set('kk:onlyVid', v); renderBook(); })) : bq, chips, blist),
     files: h('div', { class: 'pane' }, fq, flist),
     search: h('div', { class: 'pane' }, h('div', { class: 'row' }, sq, h('button', { class: 'btn primary', onclick: runSearch }, 'Suchen')), slist),
     link: h('div', { class: 'pane stack' }, h('p', { class: 'mut' }, 'Karaoke-Version auf YouTube öffnen, Link kopieren, hier einfügen.'), lk, lt, la,
@@ -549,7 +549,7 @@ function Picker(store, role) {
   }
   function renderBook() {
     const s = store.state, kiosk = s && s.mode === 'kiosk';
-    let list = store.book(); if (kiosk && !searchOk()) list = list.filter(b => b.has);
+    let list = store.book(); if ((kiosk && !searchOk()) || (role === 'dj' && LS.get('kk:onlyVid', false))) list = list.filter(b => b.has);
     const TOP = 'Top 100', genres = (list.some(b => b.top) ? [TOP] : []).concat([...new Set(list.map(b => b.g))]);
     if (ui.g && !genres.includes(ui.g)) ui.g = '';
     put(chips, ...[''].concat(genres).map(g => h('button', { class: 'chip' + (ui.g === g ? ' on' : ''), onclick: () => { ui.g = g; renderBook(); } }, g || 'Alle')));
@@ -562,7 +562,7 @@ function Picker(store, role) {
         h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a)),
         role === 'dj' && !b.has ? h('span', { class: 'tag' }, s && s.settings.karafun ? 'KaraFun' : 'ohne Video') : null,
         sel ? h('button', { class: 'btn primary', onclick: e => { e.stopPropagation(); choose(b); } }, 'Auf die Liste') : null);
-    }).concat(more > 0 ? [h('p', { class: 'mut pad' }, 'Noch ' + more + ' weitere Titel – bitte suchen oder eine Rubrik wählen.')] : []) : [h('p', { class: 'mut pad' }, kiosk && !list.length ? 'Das Songbuch wird gerade vorbereitet.' : 'Kein Treffer im Songbuch' + (role === 'guest' && !kiosk ? ' – unter „Wunsch“ nehmen wir den Titel gern auf.' : '.'))]));
+    }).concat(more > 0 ? [h('p', { class: 'mut pad' }, 'Noch ' + more + ' weitere Titel – bitte suchen oder eine Rubrik wählen.')] : []) : [h('p', { class: 'mut pad' }, role === 'dj' && !kiosk && !list.length && LS.get('kk:onlyVid', false) ? 'Noch kein Titel mit zugeordnetem Video – Schalter „Nur Titel mit Video“ ausschalten oder im Songbuch Videos zuordnen.' : kiosk && !list.length ? 'Das Songbuch wird gerade vorbereitet.' : 'Kein Treffer im Songbuch' + (role === 'guest' && !kiosk ? ' – unter „Wunsch“ nehmen wir den Titel gern auf.' : '.'))]));
   }
   function choose(b) {
     const kiosk = store.state && store.state.mode === 'kiosk';

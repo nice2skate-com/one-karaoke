@@ -1,0 +1,24 @@
+# Supabase pausiert kostenlose Projekte nach 7 Tagen ohne Zugriff.
+# Dieser Ablauf fragt zweimal pro Woche einen Songbuch-Eintrag ab und hält das Projekt so wach.
+# Adresse und Schlüssel sind die öffentlichen Werte aus config.js.
+name: Supabase wach halten
+on:
+  schedule:
+    - cron: '17 6 * * 1,4'   # montags und donnerstags, 06:17 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Songbuch abfragen
+        env:
+          SB_URL: https://envdjwhktfgphcknsbho.supabase.co
+          SB_KEY: sb_publishable_9YX_95S_MyoJEKhaKsFyXA_Ny8ggw_A
+        run: |
+          code=$(curl -s -o /tmp/r.json -w '%{http_code}' --retry 3 --retry-delay 20 \
+            -H "apikey: $SB_KEY" "$SB_URL/rest/v1/songbook?select=*&limit=1")
+          echo "Antwort: HTTP $code"; head -c 200 /tmp/r.json; echo
+          test "$code" = "200"
