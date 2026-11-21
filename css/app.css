@@ -212,3 +212,22 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 .gameov { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: none; align-items: center; justify-content: space-between; gap: 2cqw; padding: 1.2cqh 2cqw 3cqh; background: linear-gradient(rgba(0, 0, 0, .8), rgba(0, 0, 0, 0)); pointer-events: none; }
 .gameov.show { display: flex; } .gameov .gtxt { font-size: clamp(.9rem, 3.2cqh, 2.2rem); font-weight: 500; } .gameov .gtxt b { color: var(--bronze); letter-spacing: .24em; text-transform: uppercase; font-size: .6em; margin-right: 1.4cqw; }
 .gameov .qr { width: 9cqh; padding: .7cqh; border-radius: .8cqh; }
+/* Kahoot-artige Spielstände: Rangliste mit Platzwechsel, Antwortverteilung, Ergebnis-Banner, Siegerpodest */
+.board li { gap: 10px; } .board li.me { background: rgba(183, 154, 107, .2); border-radius: 10px; border-bottom-color: transparent; } .board li.gap { justify-content: center; color: var(--grey); }
+.board .dlt { font-style: normal; color: var(--bronze); font-weight: 500; font-size: .9em; } .mv { width: 1.2em; text-align: center; color: var(--grey); font-size: .8em; } .mv.up { color: var(--champagne); } .mv.down { color: #8f8a82; }
+.qa .cnt { margin-left: auto; font-style: normal; font-weight: 600; opacity: .85; }
+.revealrow { display: flex; gap: 3cqw; align-items: flex-start; width: 100%; } .revealrow .qgrid { flex: 1.4; grid-template-columns: 1fr; } .revealrow .toplist { flex: 1; max-width: none; }
+.card h1.q.small { font-size: clamp(1.1rem, 4.6cqh, 3rem); }
+.res { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line2); } .res b { font-size: 1.5rem; } .res span { color: var(--grey); }
+.res.good { background: var(--bronze); border-color: var(--bronze); color: var(--anthracite); } .res.good span { color: var(--anthracite); font-weight: 500; } .res.wrong { border-color: var(--grey); }
+.stand { margin: 0; font-weight: 500; }
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 1.4cqw; width: 100%; margin: 1cqh 0; } .podium .pcol { flex: 0 1 22cqw; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.podium .pname { font-size: clamp(1rem, 3.6cqh, 2.4rem); font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; animation: pfade .5s ease forwards; } .podium .ppts { color: var(--grey); font-size: clamp(.8rem, 2.2cqh, 1.4rem); margin-bottom: .8cqh; opacity: 0; animation: pfade .5s ease forwards; }
+.podium .pbar { width: 100%; display: grid; place-items: center; border-radius: 1.2cqh 1.2cqh 0 0; background: var(--graphite); border: 1px solid var(--line2); border-bottom: 0; transform-origin: bottom; transform: scaleY(0); animation: prise .8s cubic-bezier(.2, .8, .2, 1) forwards; } .podium .pbar b { font-size: clamp(1.6rem, 8cqh, 5rem); font-weight: 300; color: var(--grey); } .podium .pbar.empty { opacity: .35; }
+.podium .p1 .pbar { height: 24cqh; background: var(--bronze); border-color: var(--bronze); animation-delay: 1.5s; } .podium .p1 .pbar b { color: var(--anthracite); font-weight: 600; } .podium .p1 .pname, .podium .p1 .ppts { animation-delay: 2.2s; }
+.podium .p2 .pbar { height: 17cqh; background: #d7d2c8; border-color: #d7d2c8; animation-delay: .8s; } .podium .p2 .pbar b { color: var(--anthracite); } .podium .p2 .pname, .podium .p2 .ppts { animation-delay: 1.5s; }
+.podium .p3 .pbar { height: 12cqh; background: #7f6a47; border-color: #7f6a47; animation-delay: .1s; } .podium .p3 .pbar b { color: var(--offwhite); } .podium .p3 .pname, .podium .p3 .ppts { animation-delay: .8s; }
+.podium.small { gap: 8px; margin: 6px 0 10px; } .podium.small .pcol { flex: 1; } .podium.small .pname { font-size: .95rem; } .podium.small .ppts { font-size: .75rem; } .podium.small .p1 .pbar { height: 104px; } .podium.small .p2 .pbar { height: 76px; } .podium.small .p3 .pbar { height: 54px; } .podium.small .pbar b { font-size: 1.8rem; }
+@keyframes prise { to { transform: scaleY(1); } } @keyframes pfade { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .podium .pbar, .podium .pname, .podium .ppts { animation-duration: .01s; animation-delay: 0s !important; } }
+.board .grow { text-align: left; }

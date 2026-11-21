@@ -202,7 +202,14 @@ function reduce(s, a, x, m) {
       if (x.op === 'reveal') {
         if (g.type === 'battle') { g.phase = 'result'; return ok(); }
         if (g.phase !== 'q') return fail();
-        for (const cid in g.ans) { const a = g.ans[cid], sc = g.scores[cid] || (g.scores[cid] = { name: a.name, p: 0 }); sc.name = a.name; if (a.i === 0) sc.p += 100 + Math.round(50 * Math.max(0, 1 - a.t / 20000)); }
+        const before = rankMap(g.scores);
+        for (const cid in g.scores) { g.scores[cid].d = 0; g.scores[cid].ok = false; }
+        for (const cid in g.ans) {
+          const a = g.ans[cid], sc = g.scores[cid] || (g.scores[cid] = { name: a.name, p: 0, d: 0, ok: false }); sc.name = a.name;
+          if (a.i === 0) { sc.d = 100 + Math.round(50 * Math.max(0, 1 - a.t / 20000)); sc.p += sc.d; sc.ok = true; }
+        }
+        const after = rankMap(g.scores);
+        for (const cid in g.scores) g.scores[cid].mv = before[cid] ? before[cid] - after[cid] : 0; // positiv = nach oben gerückt
         g.phase = 'reveal'; g.pAt = now; return ok();
       }
       if (x.op === 'next' && g.type === 'quiz') {
@@ -214,7 +221,7 @@ function reduce(s, a, x, m) {
       return fail();
     }
     case 'vote': { const g = s.game; if (!g || g.type !== 'battle' || g.phase !== 'vote') return fail('Die Abstimmung ist beendet.'); if (x.side !== 'a' && x.side !== 'b') return fail(); g.votes[m.cid || 'x' + uid()] = x.side; return ok('Stimme gezählt.'); }
-    case 'join': { const g = s.game, name = clean(x.name, 28); if (!g || g.type !== 'quiz') return fail('Gerade läuft kein Quiz.'); if (!m.cid || !name) return fail('Bitte einen Namen eintragen.'); if (badText(name, S)) return fail(NAME_NO); const sc = g.scores[m.cid] || (g.scores[m.cid] = { name, p: 0 }); sc.name = name; return ok('Du bist dabei.'); }
+    case 'join': { const g = s.game, name = clean(x.name, 28); if (!g || g.type !== 'quiz') return fail('Gerade läuft kein Quiz.'); if (!m.cid || !name) return fail('Bitte einen Namen eintragen.'); if (badText(name, S)) return fail(NAME_NO); const sc = g.scores[m.cid] || (g.scores[m.cid] = { name, p: 0, d: 0, ok: false }); sc.name = name; return ok('Du bist dabei.'); }
     case 'answer': {
       const g = s.game; if (!g || g.type !== 'quiz' || g.phase !== 'q') return fail('Diese Frage ist schon geschlossen.');
       const name = clean(x.name, 28), i = Math.round(+x.i); if (!m.cid || !name) return fail('Bitte zuerst einen Namen eintragen.'); if (badText(name, S)) return fail(NAME_NO); if (!(i >= 0 && i <= 3)) return fail();
@@ -232,6 +239,16 @@ function reduce(s, a, x, m) {
   return fail('Unbekannte Aktion.');
 }
 // Quiz zu einem laufenden Spiel: fest hinterlegt oder aus eigenen Musikdateien erzeugt
+// Platz je Teilnehmer (gleiche Punkte = gleicher Platz) und Rangliste für die Anzeige
+function rankMap(scores) {
+  const l = Object.entries(scores).sort((a, b) => b[1].p - a[1].p || a[1].name.localeCompare(b[1].name)), m = {};
+  l.forEach(([cid, x], i) => { m[cid] = i && l[i - 1][1].p === x.p ? m[l[i - 1][0]] : i + 1; });
+  return m;
+}
+function rankList(scores, ans) {
+  const rm = rankMap(scores);
+  return Object.entries(scores).map(([cid, x]) => ({ k: cid.slice(0, 6), name: x.name, p: x.p, d: x.d || 0, ok: !!x.ok, mv: x.mv || 0, a: !!(ans && ans[cid]), r: rm[cid] })).sort((a, b) => a.r - b.r || a.name.localeCompare(b.name)).slice(0, 60);
+}
 const quizOf = g => g && g.cq ? { id: 'musik', title: 'Song erkennen', music: true, q: g.cq.map(q => ['Welcher Song ist das?', q.c].concat(q.w)) } : quizFind(g && g.id);
 const quizFind = id => (window.KK_QUIZ || []).find(q => q.id === id);
 // Reihenfolge der vier Antworten: auf allen Geräten gleich gemischt; Wert 0 = richtige Antwort
@@ -244,8 +261,8 @@ function quizOrder(id, qi) {
 function gameView(g) {
   if (!g || g.view) return g || null;
   if (g.type === 'battle') { const v = Object.values(g.votes); return { view: 1, type: 'battle', a: g.a, b: g.b, phase: g.phase, at: g.at, ca: v.filter(x => x === 'a').length, cb: v.filter(x => x === 'b').length }; }
-  const an = Object.values(g.ans);
-  return { view: 1, type: 'quiz', id: g.id, qi: g.qi, phase: g.phase, at: g.at, qAt: g.qAt, pAt: g.pAt, names: g.phase === 'lobby' ? Object.values(g.scores).map(x => x.name).slice(0, 40) : undefined, auto: !!g.auto, cq: g.cq ? g.cq.map(q => ({ c: q.c, w: q.w })) : undefined, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, top: Object.values(g.scores).sort((x, y) => y.p - x.p).slice(0, 8) };
+  const an = Object.values(g.ans), rank = rankList(g.scores, g.ans);
+  return { view: 1, type: 'quiz', id: g.id, qi: g.qi, phase: g.phase, at: g.at, qAt: g.qAt, pAt: g.pAt, names: g.phase === 'lobby' ? Object.values(g.scores).map(x => x.name).slice(0, 40) : undefined, auto: !!g.auto, cq: g.cq ? g.cq.map(q => ({ c: q.c, w: q.w })) : undefined, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, rank, top: rank.slice(0, 8), dist: g.phase === 'reveal' || g.phase === 'end' ? [0, 1, 2, 3].map(i => an.filter(a => a.i === i).length) : undefined };
 }
 function pub(s) { const c = JSON.parse(JSON.stringify(s)); delete c.settings.pin; delete c.settings.blockWords; delete c.seen; c.game = gameView(s.game); c.history = c.history.slice(0, 20); c.hasKey = !!cfg.ytKey || MOCK; return c; }
 function waitMin(s, idx) { let sec = s.current ? 150 : 0; for (let i = 0; i < idx; i++) sec += (s.queue[i].dur || 230) + 50; return Math.max(1, Math.round(sec / 60)); }

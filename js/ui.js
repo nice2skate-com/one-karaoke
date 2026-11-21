@@ -127,10 +127,23 @@ function toggle(label, checked, onchange, help) {
 const LETTERS = ['A', 'B', 'C', 'D'];
 const pct = (a, b) => a + b ? Math.round(a / (a + b) * 100) : 50;
 function topList(top, n) { return h('ol', { class: 'toplist' }, top.slice(0, n).map((x, i) => h('li', null, h('span', { class: 'num' }, i + 1), h('span', { class: 'grow' }, x.name), h('b', null, x.p)))); }
+// Platzwechsel-Zeichen und Rangliste (wie bei Kahoot): Platz, Name, Punkte der Runde, Wechsel, Gesamtpunkte
+const mvMark = mv => h('span', { class: 'mv ' + (mv > 0 ? 'up' : mv < 0 ? 'down' : '') }, mv > 0 ? '▲' : mv < 0 ? '▼' : '–');
+function scoreboard(rank, n, me) {
+  const rows = rank.slice(0, n), mine = me && rank.find(x => x.k === me), extra = mine && !rows.includes(mine);
+  const li = x => h('li', { class: x.k === me ? 'me' : '' }, h('span', { class: 'num' }, x.r), h('span', { class: 'grow' }, x.name), x.d ? h('em', { class: 'dlt' }, '+' + x.d) : null, mvMark(x.mv), h('b', null, x.p));
+  return h('ol', { class: 'toplist board' }, rows.map(li), extra ? [h('li', { class: 'gap' }, '…'), li(mine)] : null);
+}
+// Siegerpodest: Platz 1 in der Mitte, 2 links, 3 rechts; die Säulen wachsen nacheinander
+function podium(rank, small) {
+  // Nach Position, nicht nach Platznummer: Bei Punktgleichstand stehen beide auf dem Podest (mit gleicher Platznummer)
+  return h('div', { class: 'podium' + (small ? ' small' : '') }, [[2, rank[1]], [1, rank[0]], [3, rank[2]]].map(([pos, x]) => h('div', { class: 'pcol p' + pos },
+    x ? [h('div', { class: 'pname' }, x.name), h('div', { class: 'ppts' }, x.p + ' Punkte')] : null, h('div', { class: 'pbar' + (x ? '' : ' empty') }, h('b', null, x ? x.r : pos)))));
+}
 function quizGrid(g, reveal, onPick, picked) {
   const qz = quizOf(g), q = qz.q[g.qi], o = quizOrder(g.id + g.at, g.qi);
   return h('div', { class: 'qgrid' }, o.map((orig, pos) => h(onPick ? 'button' : 'div', { class: 'qa' + (reveal && orig === 0 ? ' ok' : '') + (picked === orig ? ' picked' : '') + (reveal && picked === orig && orig !== 0 ? ' wrong' : ''), disabled: onPick && (reveal || picked != null) ? true : null, onclick: onPick ? () => onPick(orig) : null },
-    h('b', null, LETTERS[pos]), h('span', null, q[1 + orig]))));
+    h('b', null, LETTERS[pos]), h('span', null, q[1 + orig]), reveal && g.dist ? h('i', { class: 'cnt' }, g.dist[orig]) : null)));
 }
 // Karte für Bühnenbild und Kiosk
 function gameCard(g, gUrl, T, onPick, picked, o) {
@@ -145,7 +158,7 @@ function gameCard(g, gUrl, T, onPick, picked, o) {
       res ? null : h('p', { class: 'sub small' }, (g.ca + g.cb) + ' Stimmen'), res ? null : qr];
   }
   const qz = quizOf(g); if (!qz) return [h('p', { class: 'sub' }, 'Quiz wird geladen …')];
-  if (g.phase === 'end') return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Endstand'), g.top.length ? h('h1', null, g.top[0].name) : h('h1', { class: 'soft' }, 'Danke fürs Mitspielen'), topList(g.top, 5), endBtn];
+  if (g.phase === 'end') return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Endstand'), h('h1', { class: 'soft' }, g.rank.length ? T('Das Siegerpodest', 'Das Siegerpodest') : 'Danke fürs Mitspielen'), g.rank.length ? podium(g.rank) : null, g.rank.length > 3 ? scoreboard(g.rank.slice(3), 4, null) : null, endBtn];
   if (g.phase === 'lobby') {
     const left = Math.max(0, Math.ceil((LOBBY_MS - (Date.now() - g.pAt)) / 1000)), img = qImg(g.id);
     return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title), img ? h('img', { class: 'qimg', src: img, alt: '' }) : null, h('h1', { class: 'soft' }, T('Gleich geht es los – meldet euch an', 'Gleich geht es los – melden Sie sich an')),
@@ -155,9 +168,12 @@ function gameCard(g, gUrl, T, onPick, picked, o) {
   }
   const reveal = g.phase === 'reveal', qpic = qz.music ? '' : qImg(g.id, g.qi + 1);
   const left = g.auto && !reveal && g.qAt ? Math.max(0, 20 - (Date.now() - g.qAt) / 1000) : 0;
+  if (reveal) return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Zwischenstand nach Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft q small' }, qz.q[g.qi][0]),
+    h('div', { class: 'revealrow' }, quizGrid(g, true, onPick, picked), g.rank.length ? scoreboard(g.rank, 5, null) : null),
+    h('p', { class: 'sub small' }, g.right + ' von ' + g.count + ' richtig'), endBtn];
   return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), qpic ? h('img', { class: 'qimg', src: qpic, alt: '' }) : null, h('h1', { class: 'soft q' }, (qz.music && !reveal ? '♪  ' : '') + qz.q[g.qi][0]), quizGrid(g, reveal, onPick, picked),
     left ? h('div', { class: 'qtime' }, h('i', { style: 'animation-duration:20s;animation-delay:-' + (20 - left).toFixed(1) + 's' })) : null,
-    h('p', { class: 'sub small' }, reveal ? g.right + ' von ' + g.count + ' richtig' : g.count + ' Antworten'), reveal ? (g.top.length ? topList(g.top, 3) : null) : qr, endBtn];
+    h('p', { class: 'sub small' }, g.count + ' Antworten'), qr, endBtn];
 }
 
 // ============ Player ============
@@ -316,7 +332,7 @@ function Stage(root, store, opt) {
     }
     clearTimeout(autoT);
     if (api.player && g0 && g0.type === 'quiz' && (g0.auto || inLobby)) {
-      const wait = inLobby ? LOBBY_MS : g0.phase === 'q' ? 20000 : g0.phase === 'reveal' ? 7000 : 15000, op = inLobby ? 'begin' : g0.phase === 'q' ? 'reveal' : g0.phase === 'reveal' ? 'next' : 'end';
+      const wait = inLobby ? LOBBY_MS : g0.phase === 'q' ? 20000 : g0.phase === 'reveal' ? 10000 : 20000, op = inLobby ? 'begin' : g0.phase === 'q' ? 'reveal' : g0.phase === 'reveal' ? 'next' : 'end';
       autoT = setTimeout(() => store.dispatch('game', { op }, { from: 'player' }), Math.max(400, wait - (Date.now() - (g0.pAt || g0.qAt))));
     }
     if (!c) prog.style.width = '0';
@@ -1013,7 +1029,9 @@ function viewGuest(app, room) {
         mine[k] ? h('p', { class: 'mut' }, T('Deine Stimme zählt. Du kannst sie noch ändern.', 'Ihre Stimme zählt. Sie können sie noch ändern.')) : null));
     }
     const qz = quizOf(g); if (!qz) return put(gameBox);
-    if (g.phase === 'end') return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Endstand'), g.top.length ? topList(g.top, 8) : h('p', { class: 'mut' }, 'Danke fürs Mitspielen.')));
+    const myK = CID.slice(0, 6), me = g.rank && g.rank.find(x => x.k === myK);
+    if (g.phase === 'end') return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Endstand'), g.rank.length ? podium(g.rank, true) : h('p', { class: 'mut' }, 'Danke fürs Mitspielen.'),
+      me ? h('div', { class: 'res ' + (me.r <= 3 ? 'good' : 'none') }, h('b', null, T('Du bist Platz ', 'Sie sind Platz ') + me.r), h('span', null, me.p + ' Punkte')) : null, g.rank.length > 3 ? scoreboard(g.rank, 8, myK) : null));
     const name = LS.get('kk:name', '').trim(), reveal = g.phase === 'reveal', my = mine[k];
     if (g.phase === 'lobby') {
       const jk = 'join:' + g.at, ni = h('input', { class: 'in big', placeholder: T('Dein Name', 'Ihr Name'), maxLength: 28, value: name });
@@ -1023,8 +1041,11 @@ function viewGuest(app, room) {
     const nameIn = h('input', { class: 'in', placeholder: T('Dein Name fürs Quiz', 'Ihr Name fürs Quiz'), maxLength: 28, value: name, onchange: e => { LS.set('kk:name', e.target.value); drawGame(store.state); } });
     put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('div', { class: 'st wrap' }, qz.q[g.qi][0]),
       !name ? [h('p', { class: 'mut' }, T('Trag zuerst deinen Namen ein, dann kannst du antworten.', 'Bitte zuerst den Namen eintragen.')), nameIn] : quizGrid(g, reveal, i => send('answer', { i, name }, i), my),
-      reveal ? h('p', null, my == null ? 'Keine Antwort abgegeben.' : my === 0 ? 'Richtig!' : 'Leider falsch – richtig ist: ' + qz.q[g.qi][1]) : my != null ? h('p', { class: 'mut' }, 'Antwort gespeichert.') : null,
-      reveal && g.top.length ? topList(g.top, 5) : null));
+      reveal ? (my === 0 || (me && me.ok) ? h('div', { class: 'res good' }, h('b', null, 'Richtig!'), me && me.d ? h('span', null, '+' + me.d + ' Punkte') : null)
+        : my != null || (me && me.a) ? h('div', { class: 'res wrong' }, h('b', null, 'Leider falsch'), h('span', null, 'Richtig: ' + qz.q[g.qi][1]))
+        : h('div', { class: 'res none' }, h('b', null, 'Keine Antwort'), h('span', null, 'Richtig: ' + qz.q[g.qi][1]))) : my != null ? h('p', { class: 'mut' }, 'Antwort gespeichert.') : null,
+      reveal && me ? h('p', { class: 'stand' }, 'Platz ' + me.r + ' von ' + g.rank.length + ' · ' + me.p + ' Punkte ', mvMark(me.mv)) : null,
+      reveal && g.rank.length ? scoreboard(g.rank, 5, myK) : null));
   }
   let built = false;
   function render(s) {
