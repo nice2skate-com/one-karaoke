@@ -61,6 +61,12 @@ Auf dem **iPad** muss die App im Internet liegen (siehe 5.), weil das iPad keine
 - Alternativ lässt sich im Reiter **Link** die direkte https-Adresse einer Videodatei einfügen (z. B. vom eigenen Server).
 - Der Ordner `videos` ist von der Versionsverwaltung ausgenommen – die Dateien landen nicht im Internet.
 
+**MP3+G (CDG):** Viele Karaoke-Shops liefern Titel als Paar aus `Interpret - Titel.cdg` (Textgrafik) und `Interpret - Titel.mp3` (Musik), oft in einer ZIP-Datei.
+- ZIP entpacken und **beide** Dateien mit gleichem Namen in den Ordner `videos` legen. Neben MP3 gehen auch M4A, OGG, WAV und AAC.
+- Im Reiter **Dateien** erscheint nur die `.cdg`. Die App zeichnet die Liedtext-Grafik im Takt der Musik, Vor- und Zurückspulen funktioniert.
+- Die Tonart-Verschiebung (4b) funktioniert auch hier, weil die Musik eine eigene Datei ist.
+- **KFN (KaraFun-Dateien) geht nicht:** Das ist das hauseigene, teilweise verschlüsselte Format von KaraFun und nur für den KaraFun-Player gedacht. Solche Titel über den KaraFun-Modus (4c) abspielen oder als MP4/CDG kaufen (z. B. bei Karaoke Version).
+
 ## 4b. Tonart ändern (Key Shift)
 
 - Funktioniert bei **eigenen Videodateien** im Ordner `videos` (lokaler Start über `start-mac.command`). Bei YouTube-Videos ist es technisch nicht möglich, weil der Browser keinen Zugriff auf deren Ton gibt.
@@ -146,6 +152,34 @@ Ablauf:
 Einmalig in Cloudflare einstellen (Workers & Pages → one-karaoke → Settings → Build → Branch control): **Production branch** von `main` auf `stable` ändern und speichern.
 
 Den lokalen Kiosk-Mac immer aus dem freigegebenen Stand laden: `https://github.com/nice2skate-com/one-karaoke/archive/refs/heads/stable.zip`
+
+## 4i. Kiosk-Mac aktualisieren
+
+Im App-Ordner liegt **`update-mac.command`**. Doppelklick genügt:
+- Das Skript lädt den freigegebenen Stand (`stable`) und ersetzt die Programmdateien.
+- Die Ordner `videos` und `quiz` mit deinen eigenen Dateien bleiben unangetastet.
+- Die macOS-Sperre (`xattr`) entfernt das Skript selbst. Am Ende steht, welcher Stand installiert ist.
+- Danach `start-mac.command` neu starten bzw. das Browserfenster neu laden.
+
+Nur beim allerersten Mal (das Skript ist noch nicht auf dem Mac): ZIP wie bisher laden, entpacken, einmal `xattr -dr com.apple.quarantine` auf den Ordner ausführen. Ab dann nur noch `update-mac.command`.
+
+## 4j. Firmenfeiern: Name und Logo des Gastgebers
+
+Konsole → Einstellungen → **Veranstaltung**:
+- **Name der Veranstaltung** (z. B. „Sommerfest Musterfirma“): erscheint auf dem Bühnenbild, im Kiosk und auf den Handys.
+- **Logo des Gastgebers**: PNG, JPG, WebP oder SVG wählen. Es wird verkleinert und auf diesem Rechner gespeichert, steht neben dem DJ-KOLJA-ONE-Logo (Startbild, Infoleiste, Kiosk, Handy).
+- **Logo auf hellem Grund zeigen**: für dunkle Logos (an), für helle Logos mit transparentem Hintergrund aus.
+- Nach der Feier: Logo **Entfernen** und Namen löschen.
+
+Das Logo liegt auf dem Gerät, das den Raum führt (Konsole bzw. Kiosk). Für den Nebenraum also am Kiosk-Mac über die DJ-Bedienung eintragen.
+
+## 4k. Abschluss des Abends
+
+Konsole → **Abschluss**:
+- **Abschlussfolie zeigen**: Das Bühnenbild zeigt „Danke fürs Mitsingen!“, die Zahlen des Abends (Auftritte, Stimmen, Songs) und die fünf meistgesungenen Songs. Ein laufender Song wird nicht verdeckt – die Folie erscheint danach.
+- **Link zur Bewertung** (z. B. dein Google-Bewertungslink, muss mit `https://` beginnen): erscheint als QR-Code auf der Folie und als Knopf „Jetzt bewerten“ auf den Handys.
+- **Abend als Datei speichern**: alle Songs des Raums als CSV-Tabelle (öffnet sich in Excel oder Numbers). Namen der Gäste nur bei Bedarf mit exportieren.
+- Die **Statistik** (mit DJ-Anmeldung) lässt sich ebenfalls als CSV speichern.
 
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 

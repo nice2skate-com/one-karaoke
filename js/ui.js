@@ -201,7 +201,11 @@ function gameCard(g, gUrl, T, onPick, picked, o) {
 // Eigene Videodatei – gleiche Schnittstelle wie der YouTube-Player
 class FilePlayer {
   constructor(box, ev, controls) {
-    this.st = -1; const v = this.v = h('video', { class: 'filevid', playsInline: true, preload: 'auto', controls: !!controls }); v.style.display = 'none'; box.append(v);
+    this.st = -1; this.ev = ev; const v = this.v = h('video', { class: 'filevid', playsInline: true, preload: 'auto', controls: !!controls }); v.style.display = 'none'; box.append(v);
+    // MP3+G: Grafik aus der .cdg-Datei, Ton aus der gleichnamigen Audiodatei
+    this.cv = h('canvas', { class: 'filevid cdgcv' }); this.cv.style.display = 'none'; box.append(this.cv);
+    this.shown = false; this.cdgOn = false; this.cdg = null; this.n = 0;
+    const loop = () => { if (this.cdgOn && this.cdg) this.cdg.seek(v.currentTime || 0); requestAnimationFrame(loop); }; requestAnimationFrame(loop);
     const set = st => { this.st = st; ev.onStateChange({ data: st }); };
     v.addEventListener('loadedmetadata', () => { if (this.st === -1) set(5); });
     v.addEventListener('playing', () => set(1));
@@ -209,9 +213,31 @@ class FilePlayer {
     v.addEventListener('ended', () => set(0));
     v.addEventListener('error', () => { if (v.getAttribute('src')) ev.onError({ data: 'Datei' }); });
   }
-  show(b) { this.v.style.display = b ? '' : 'none'; }
-  cueVideoById(src) { this.st = -1; this.v.src = src; this.v.load(); if (this.node) this.node.port.postMessage({ reset: true }); }
-  playVideo() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => { }); const p = this.v.play(); if (p) p.catch(() => { }); }
+  show(b) { this.shown = b; this.v.style.display = b && !this.cdgOn ? '' : 'none'; this.cv.style.display = b && this.cdgOn ? '' : 'none'; }
+  cueVideoById(src) {
+    this.st = -1; const n = ++this.n; this.wantPlay = false;
+    if (this.node) this.node.port.postMessage({ reset: true });
+    this.cdgOn = /\.cdg(\?|$)/i.test(src); this.show(this.shown);
+    if (!this.cdgOn) { this.v.src = src; this.v.load(); return; }
+    this.loading = true; this.v.removeAttribute('src'); this.v.load();
+    this.loadCdg(src).then(audio => {
+      if (n !== this.n) return; this.loading = false;
+      this.v.src = audio; this.v.load(); if (this.wantPlay) this.playVideo();
+    }).catch(e => { if (n !== this.n) return; this.loading = false; console.warn('CDG:', e.message); this.ev.onError({ data: 'Datei' }); });
+  }
+  async loadCdg(src) {
+    const base = src.replace(/\.cdg(\?.*)?$/i, ''), r = await fetch(src); if (!r.ok) throw new Error('CDG-Datei fehlt');
+    if (!this.cdg) this.cdg = new window.KK_CDG(this.cv);
+    this.cdg.load(await r.arrayBuffer());
+    for (const ext of ['mp3', 'MP3', 'm4a', 'ogg', 'wav', 'aac']) {
+      try { const a = await fetch(base + '.' + ext, { method: 'HEAD' }); if (a.ok) return base + '.' + ext; } catch (e) { /* nächste Endung */ }
+    }
+    throw new Error('Zur CDG-Datei fehlt die gleichnamige MP3-Datei');
+  }
+  playVideo() {
+    if (this.loading) { this.wantPlay = true; return; }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => { }); const p = this.v.play(); if (p) p.catch(() => { });
+  }
   // Tonart: Ton der Datei läuft durch ein Echtzeit-Modul; bei 0 Halbtönen direkt, ohne Verzögerung
   async setKey(k) {
     k = k || 0; if (k === this.key) return; this.key = k;
@@ -230,8 +256,8 @@ class FilePlayer {
       this.srcNode.connect(this.key ? this.node : this.ctx.destination);
     } catch (e) { console.warn('Tonart:', e.message); }
   }
-  pauseVideo() { this.v.pause(); }
-  stopVideo() { this.st = -1; this.v.pause(); this.v.removeAttribute('src'); this.v.load(); }
+  pauseVideo() { this.wantPlay = false; this.v.pause(); }
+  stopVideo() { this.st = -1; this.n++; this.wantPlay = false; this.loading = false; this.cdgOn = false; this.show(this.shown); if (this.cdg) this.cdg.reset(); this.v.pause(); this.v.removeAttribute('src'); this.v.load(); }
   seekTo(t) { try { this.v.currentTime = t; } catch (e) { /* noch nicht geladen */ } }
   setVolume(x) { this.v.volume = Math.max(0, Math.min(1, x / 100)); }
   getCurrentTime() { return this.v.currentTime || 0; }

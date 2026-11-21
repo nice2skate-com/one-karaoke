@@ -1,5 +1,8 @@
 Eigene Karaoke-Videos (MP4, WebM) hier ablegen.
 
+MP3+G: die .cdg-Datei und die gleichnamige .mp3-Datei zusammen hier ablegen
+(z. B. "ABBA - Waterloo.cdg" und "ABBA - Waterloo.mp3", vorher aus der ZIP entpacken).
+
 Dateiname am besten:  Interpret - Titel.mp4
 Dann erkennt die App Titel und Interpret von selbst und kann die Dateien
 dem Songbuch zuordnen (Konsole → Songbuch → "Eigene Dateien zuordnen").

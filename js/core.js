@@ -70,7 +70,7 @@ const ok = (msg, extra) => Object.assign({ ok: true, msg }, extra);
 const fail = msg => ({ ok: false, msg });
 const VID_RE = /^[\w-]{11}$/;
 // Eigene Videodateien: Ordner "videos/" neben der App oder eine direkte https-Adresse
-const FILE_RE = /^(https:\/\/[^\s"'<>]{4,400}|videos\/[^"'<>]{1,240})\.(mp4|webm|m4v|mov)(\?[^\s"'<>]*)?$/i;
+const FILE_RE = /^(https:\/\/[^\s"'<>]{4,400}|videos\/[^"'<>]{1,240})\.(mp4|webm|m4v|mov|cdg)(\?[^\s"'<>]*)?$/i;
 const isFile = v => !!v && !VID_RE.test(v);
 const mediaOk = v => VID_RE.test(v || '') || FILE_RE.test(v || '');
 // Tonart-Verschiebung in Halbtönen; funktioniert nur bei eigenen Videodateien neben der App
@@ -308,7 +308,7 @@ function listDir(dir, ext) {
     } catch (e) { return []; }
   })());
 }
-const localVideos = () => listDir('videos/', /\.(mp4|webm|m4v|mov)$/i).then(l => l.filter(x => FILE_RE.test(x)));
+const localVideos = () => listDir('videos/', /\.(mp4|webm|m4v|mov|cdg)$/i).then(l => l.filter(x => FILE_RE.test(x)));
 // Musik für das Quiz "Song erkennen": Ordner quiz/ (Audio oder Video), ersatzweise die Karaoke-Videos
 const QUIZ_RE = /^(quiz|videos)\/[^"'<>]{1,240}\.(mp3|m4a|aac|wav|ogg|flac|mp4|webm|m4v|mov)$/i;
 const quizFiles = () => listDir('quiz/', /\.(mp3|m4a|aac|wav|ogg|flac|mp4|webm|m4v|mov)$/i).then(async l => (l.length >= 4 ? l : l.concat(await localVideos())).filter(x => QUIZ_RE.test(x)));
