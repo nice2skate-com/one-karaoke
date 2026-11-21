@@ -206,3 +206,5 @@ button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9
 .btn.endq { font-size: clamp(.8rem, 2cqh, 1.1rem); }
 .tag.bad { color: var(--offwhite); background: rgba(183, 154, 107, .28); border-color: var(--bronze); }
 .cbx { width: 20px; height: 20px; accent-color: var(--bronze); flex: none; } label.qrow.chk { cursor: pointer; }
+.foot .legal { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 6px; } .linkbtn { background: none; border: 0; color: var(--grey); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+.legalnote ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 10px; } .legalnote p { color: var(--grey); }

@@ -114,6 +114,14 @@ Beides im Songbuch-Dialog der Konsole (als angemeldeter DJ).
 - **Videos prüfen:** Ein Knopf prüft alle zugeordneten YouTube-Videos auf: Einbetten gesperrt, in Deutschland gesperrt, altersbeschränkt, privat oder gelöscht. Betroffene Titel bekommen eine Markierung und lassen sich mit „Nur Probleme“ filtern. „Problem-Zuordnungen lösen“ macht sie wieder offen. Vor jedem größeren Auftritt einmal laufen lassen.
 - **Kontingent:** Der Dialog zeigt, wie viel vom Tageskontingent (10.000 Einheiten) dieses Gerät heute verbraucht hat. Verbrauch anderer Geräte oder der Google-Konsole wird nicht mitgezählt.
 
+## 4g. Namensfilter, Impressum und Datenschutz
+
+- **Namensfilter:** Namen und frei getippte Wünsche von Gästen werden geprüft, bevor sie auf dem Bildschirm erscheinen. Er erkennt Beleidigungen, Obszönes und rechtsextreme Begriffe, auch bei Tricks wie „f4ck“ oder „f u c k“, und lässt normale Namen durch. Der Gast sieht nur „Dieser Name ist hier leider nicht möglich“. Gilt auch für Quiz-Namen. Titel aus dem Songbuch sind ausgenommen, sie kommen vom DJ.
+- **Einstellungen:** „Namen und Wünsche filtern“ lässt sich ausschalten. Unter „Eigene gesperrte Wörter“ ergänzt du Begriffe, z. B. Namen von Vorgesetzten. Die eingebaute Liste steht in `js/filter.js`.
+- **Grenze:** Der Filter ist ein Hilfsmittel, kein Garant. Wer sich viel Mühe gibt, kommt durch. Bei Firmenfeiern bleibt die Freigabe von Wünschen auf der Mainstage die sicherste Einstellung.
+- **Impressum und Datenschutz:** In `config.js` bei `legal` die vollständigen Adressen der beiden Seiten eintragen. Sie erscheinen dann unten auf der Gäste-Seite und der Startseite. Solange sie fehlen, erinnert die Konsole in den Einstellungen daran.
+- **Hinweis zur Datenverarbeitung:** Auf der Gäste-Seite öffnet ein Link einen kurzen, sachlichen Text dazu, was die App mit Namen und Wünschen macht. Er ersetzt keine Datenschutzerklärung. In deiner eigenen Erklärung sollten Supabase (Nachrichtenkanal), Cloudflare (Auslieferung) und die YouTube-Vorschaubilder erwähnt sein.
+
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 
 Der Ordner ist eine statische Website. Geeignet ist jedes HTTPS-Hosting, z. B. ein Unterordner auf dem eigenen Webspace (`karaoke.deine-domain.de`), Netlify oder GitHub Pages. Den kompletten Ordnerinhalt hochladen – fertig.

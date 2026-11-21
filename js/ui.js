@@ -52,6 +52,29 @@ function musicRound(n) {
 }
 let FILES = []; const filesReady = localVideos().then(l => { FILES = l; return l; });
 const keyLabel = k => (k > 0 ? '+' : k < 0 ? '−' : '±') + Math.abs(k || 0);
+// Rechtliche Fußzeile: Impressum und Datenschutz (Adressen aus config.js) und ein kurzer, sachlicher Hinweis zur Datenverarbeitung
+const LEGAL = (window.KK_CONFIG && window.KK_CONFIG.legal) || {};
+const legalLink = u => /^https:\/\//.test(u || '') ? u : '';
+function privacyNote() {
+  const dp = legalLink(LEGAL.datenschutz);
+  modal('Hinweis zur Datenverarbeitung', h('div', { class: 'stack legalnote' },
+    h('p', null, 'Dieses Karaoke-System verarbeitet nur, was für den Abend nötig ist:'),
+    h('ul', null,
+      h('li', null, h('b', null, 'Eingaben: '), 'Der Name, den Sie eingeben, Ihre Songwünsche sowie Antworten und Stimmen bei Spielen werden über einen Nachrichtenkanal (Supabase, Rechenzentrum Frankfurt) an das System des DJs übertragen und auf dem Bildschirm vor Ort gezeigt. Dabei werden sie nicht in einer Datenbank gespeichert.'),
+      h('li', null, h('b', null, 'Auf Ihrem Gerät: '), 'Ihr Name und eine zufällige Gerätekennung bleiben im Browser Ihres Handys gespeichert, damit Sie nicht alles erneut eingeben müssen und Ihre Wünsche Ihnen zugeordnet werden. Cookies, Werbung oder Tracking-Dienste setzt die App nicht ein.'),
+      h('li', null, h('b', null, 'Beim DJ: '), 'Die Liste mit Namen bleibt im Browser des DJ-Rechners, bis der DJ sie am Ende des Abends löscht. In der Auswertung werden nur Titel und Interpret gezählt, keine Namen.'),
+      h('li', null, h('b', null, 'YouTube: '), 'Nur wenn die freie Suche aktiviert ist, werden Vorschaubilder von YouTube geladen; dabei wird Ihre IP-Adresse an Google übermittelt.'),
+      h('li', null, h('b', null, 'Auslieferung der Seite: '), 'Die Seite wird über Cloudflare ausgeliefert; dabei können technisch notwendige Zugriffsdaten (z. B. IP-Adresse) anfallen.')),
+    h('p', null, 'Verantwortlich ist der Betreiber (siehe Impressum).' + (dp ? '' : ' Weitere Informationen stehen in der Datenschutzerklärung des Betreibers.')),
+    dp ? h('a', { class: 'btn', href: dp, target: '_blank', rel: 'noopener' }, 'Zur Datenschutzerklärung ↗') : null));
+}
+function legalFoot(extra) {
+  const im = legalLink(LEGAL.impressum), dp = legalLink(LEGAL.datenschutz);
+  return h('footer', { class: 'foot' }, extra || null,
+    h('div', { class: 'legal' }, im ? h('a', { href: im, target: '_blank', rel: 'noopener' }, 'Impressum') : null, dp ? h('a', { href: dp, target: '_blank', rel: 'noopener' }, 'Datenschutz') : null,
+      h('button', { class: 'linkbtn', onclick: privacyNote }, 'Hinweis zur Datenverarbeitung')),
+    h('div', null, 'ONE — aus einer Hand. Einmalig erlebt.'));
+}
 const songLine = e => e.t + (e.a ? ' · ' + e.a : '');
 const logo = cls => h('img', { class: 'logo ' + (cls || ''), src: 'assets/logo.svg', alt: 'DJ KOLJA ONE' });
 function toast(msg, kind) {
@@ -421,7 +444,7 @@ function Picker(store, role) {
       wt, wa, h('button', { class: 'btn primary', onclick: () => { if (!wt.value.trim()) return toast('Bitte einen Titel eintragen.', 'warn'); add({ t: wt.value, a: wa.value }, () => { wt.value = wa.value = ''; }); } }, role === 'dj' ? 'Vormerken' : 'Wunsch senden'))
   };
   const body = h('div', { class: 'pbody' });
-  const root = h('div', { class: 'picker' }, h('span', { class: 'lbl' }, role === 'dj' ? 'Sängerin / Sänger' : T('Dein Name', 'Ihr Name')), nameIn, tabs, body);
+  const root = h('div', { class: 'picker' }, h('span', { class: 'lbl' }, role === 'dj' ? 'Sängerin / Sänger' : T('Dein Name', 'Ihr Name')), nameIn, role === 'dj' ? null : h('small', null, T('Dein Name erscheint auf dem Bildschirm.', 'Ihr Name erscheint auf dem Bildschirm.')), tabs, body);
 
   function add(song, done) {
     const name = nameIn.value.trim();
@@ -723,6 +746,9 @@ function settingsDlg(store) {
   const kids = [
     h('h4', null, 'Ablauf'),
     field('Name des Raums', inp(s.name, v => set({ name: v }))),
+    toggle('Namen und Wünsche filtern', S.filter !== false, v => set({ filter: v }), 'Weist Beleidigungen und Obszönes bei Gästen ab, bevor es auf dem Bildschirm erscheint.'),
+    field('Eigene gesperrte Wörter', inp(S.blockWords, v => set({ blockWords: v }), { placeholder: 'Wörter durch Komma trennen' }), 'Zusätzlich zur eingebauten Liste, z. B. Namen von Vorgesetzten. Der Filter schützt nur die Anzeige für Gäste.'),
+    !legalLink(LEGAL.impressum) || !legalLink(LEGAL.datenschutz) ? h('div', { class: 'alert' }, 'Die Adressen von Impressum und Datenschutzerklärung fehlen in der Datei config.js. Sie erscheinen sonst nicht auf der Gäste-Seite.') : null,
     toggle('Faire Reihenfolge', S.fair, v => set({ fair: v }), 'Wer noch nicht gesungen hat, rückt vor Vielsänger.'),
     toggle('Nächsten automatisch ankündigen', S.autoNext, v => set({ autoNext: v }), 'Nach jedem Song erscheint direkt die nächste Person auf dem Bühnenbild.'),
     field('Automatischer Start nach Ankündigung', h('select', { class: 'in', onchange: e => set({ autoStart: +e.target.value }) }, [[0, 'Aus – Start per Knopfdruck'], [8, 'nach 8 Sekunden'], [15, 'nach 15 Sekunden'], [25, 'nach 25 Sekunden']].map(([v, l]) => h('option', { value: v, selected: S.autoStart === v }, l)))),
@@ -1009,7 +1035,7 @@ function viewGuest(app, room) {
       myIn.map(e => h('div', { class: 'qrow' }, h('div', { class: 'grow' }, h('div', { class: 'st' }, e.t), h('div', { class: 'sa' }, 'Wunsch liegt beim DJ')))))] : []));
     put(listBox, h('section', { class: 'panel' }, h('h2', null, 'Reihenfolge'), publicQueue(s, mine)));
   }
-  app.append(h('div', { class: 'page guest' }, h('header', { class: 'top center' }, logo()), waitBox, main, h('footer', { class: 'foot' }, 'ONE — aus einer Hand. Einmalig erlebt.')));
+  app.append(h('div', { class: 'page guest' }, h('header', { class: 'top center' }, logo()), waitBox, main, legalFoot()));
   store.on(render); store.onConn(() => { if (!store.state) render(null); });
 }
 
@@ -1026,7 +1052,7 @@ function viewHome(app) {
         h('a', { class: 'btn primary', href: link('kiosk', side) }, 'Kiosk starten'), h('a', { class: 'btn', href: link('dj', side, { m: 'kiosk' }) }, 'Konsole dazu')),
       cardEl('Zweites Gerät', 'Raum fernsteuern', 'Den Nebenraum vom DJ-Pult im Blick behalten – oder die Mainstage vom iPad aus bedienen. Benötigt die Cloud-Verbindung.',
         rc, h('button', { class: 'btn', onclick: () => { const r = rc.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); if (r) location.href = link('dj', r, { remote: 1 }); } }, 'Verbinden'))),
-    h('footer', { class: 'foot' }, 'Event-Code ' + code + ' · Mainstage ' + main + ' · Nebenraum ' + side + (MOCK ? ' · Demo-Modus' : ''), h('br'), h('a', { href: location.pathname + '?mock=1' }, 'Demo-Modus ohne Internet'), ' · ONE — aus einer Hand. Einmalig erlebt.')));
+    h('footer', { class: 'foot' }, 'Event-Code ' + code + ' · Mainstage ' + main + ' · Nebenraum ' + side + (MOCK ? ' · Demo-Modus' : ''), h('br'), h('a', { href: location.pathname + '?mock=1' }, 'Demo-Modus ohne Internet'), ' · ONE — aus einer Hand. Einmalig erlebt.', legalFoot().querySelector('.legal'))));
 }
 
 // ============ Start ============

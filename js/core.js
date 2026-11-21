@@ -60,7 +60,7 @@ function initState(room, mode) {
     v: 1, rev: 0, room, mode, name: mode === 'kiosk' ? 'Nebenraum' : 'Mainstage',
     settings: {
       signupOpen: true, approve: mode !== 'kiosk', maxPerGuest: 2, autoNext: true, autoStart: 0, fair: true,
-      formal: false, guestSearch: mode === 'kiosk', bar: true, pin: String(Math.floor(1000 + Math.random() * 9000)), ticker: ''
+      formal: false, filter: true, blockWords: '', guestSearch: mode === 'kiosk', bar: true, pin: String(Math.floor(1000 + Math.random() * 9000)), ticker: ''
     },
     queue: [], inbox: [], current: null, play: { want: 'pause', seek: null, vol: 100 }, now: { st: 'idle' },
     last: null, note: null, history: [], seen: []
@@ -103,7 +103,9 @@ function finish(s, sung, auto) {
   if (auto !== false && s.settings.autoNext && s.queue.length) toStage(s);
 }
 const GUEST_ACTS = ['add', 'vote', 'answer', 'join'];
-const SETTABLE = ['karafun', 'signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
+const NAME_NO = 'Dieser Name ist hier leider nicht möglich. Bitte einen anderen wählen.';
+const badText = (t, S) => S.filter !== false && !!(window.KK_FILTER && window.KK_FILTER.bad(t, S.blockWords));
+const SETTABLE = ['filter', 'blockWords', 'karafun', 'signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
 
 function reduce(s, a, x, m) {
   x = x || {}; m = m || { from: 'dj' };
@@ -120,6 +122,10 @@ function reduce(s, a, x, m) {
       if (e.sid && !e.vid) { const b = bookFind(e.sid); if (b && b.vid) { e.vid = b.vid; e.dur = b.dur; } }
       if (!dj) {
         if (!S.signupOpen) return fail('Die Anmeldung ist gerade geschlossen.');
+        // Namen und freie Wünsche vor der Anzeige prüfen; Songbuch-Titel sind vom DJ kuratiert und werden aus dem Songbuch übernommen
+        if (badText(e.name, S)) return fail(NAME_NO);
+        const known = e.sid && bookFind(e.sid);
+        if (known) { e.t = known.t; e.a = known.a; } else { e.sid = ''; if (badText(e.t + ' ' + e.a, S)) return fail('Dieser Titel ist hier leider nicht möglich.'); }
         const open = s.queue.concat(s.inbox);
         const mine = open.filter(q => (m.cid && q.cid === m.cid) || lc(q.name) === lc(e.name)).length;
         if (mine >= S.maxPerGuest) return fail('Maximal ' + S.maxPerGuest + ' offene Songs pro Person – danach gern wieder.');
@@ -178,7 +184,7 @@ function reduce(s, a, x, m) {
       if (x.st === 'paused') s.play.want = 'pause';
       return ok();
     }
-    case 'set': { for (const k of SETTABLE) if (k in x) S[k] = k === 'maxPerGuest' ? Math.max(1, Math.min(9, +x[k] || 1)) : k === 'autoStart' ? Math.max(0, Math.min(60, +x[k] || 0)) : k === 'ticker' ? clean(x[k], 140) : k === 'pin' ? (clean(x[k], 8) || S.pin) : x[k]; if ('name' in x) s.name = clean(x.name, 30) || s.name; return ok(); }
+    case 'set': { for (const k of SETTABLE) if (k in x) S[k] = k === 'maxPerGuest' ? Math.max(1, Math.min(9, +x[k] || 1)) : k === 'autoStart' ? Math.max(0, Math.min(60, +x[k] || 0)) : k === 'ticker' ? clean(x[k], 140) : k === 'blockWords' ? clean(x[k], 300) : k === 'pin' ? (clean(x[k], 8) || S.pin) : x[k]; if ('name' in x) s.name = clean(x.name, 30) || s.name; return ok(); }
     // Spiele: Battle (Abstimmung zwischen zwei Auftritten) und Musik-Quiz
     case 'game': {
       const g = s.game, now = Date.now();
@@ -208,10 +214,10 @@ function reduce(s, a, x, m) {
       return fail();
     }
     case 'vote': { const g = s.game; if (!g || g.type !== 'battle' || g.phase !== 'vote') return fail('Die Abstimmung ist beendet.'); if (x.side !== 'a' && x.side !== 'b') return fail(); g.votes[m.cid || 'x' + uid()] = x.side; return ok('Stimme gezählt.'); }
-    case 'join': { const g = s.game, name = clean(x.name, 28); if (!g || g.type !== 'quiz') return fail('Gerade läuft kein Quiz.'); if (!m.cid || !name) return fail('Bitte einen Namen eintragen.'); const sc = g.scores[m.cid] || (g.scores[m.cid] = { name, p: 0 }); sc.name = name; return ok('Du bist dabei.'); }
+    case 'join': { const g = s.game, name = clean(x.name, 28); if (!g || g.type !== 'quiz') return fail('Gerade läuft kein Quiz.'); if (!m.cid || !name) return fail('Bitte einen Namen eintragen.'); if (badText(name, S)) return fail(NAME_NO); const sc = g.scores[m.cid] || (g.scores[m.cid] = { name, p: 0 }); sc.name = name; return ok('Du bist dabei.'); }
     case 'answer': {
       const g = s.game; if (!g || g.type !== 'quiz' || g.phase !== 'q') return fail('Diese Frage ist schon geschlossen.');
-      const name = clean(x.name, 28), i = Math.round(+x.i); if (!m.cid || !name) return fail('Bitte zuerst einen Namen eintragen.'); if (!(i >= 0 && i <= 3)) return fail();
+      const name = clean(x.name, 28), i = Math.round(+x.i); if (!m.cid || !name) return fail('Bitte zuerst einen Namen eintragen.'); if (badText(name, S)) return fail(NAME_NO); if (!(i >= 0 && i <= 3)) return fail();
       if (g.ans[m.cid]) return fail('Antwort ist schon abgegeben.');
       g.ans[m.cid] = { i, t: Date.now() - g.qAt, name }; return ok('Antwort gespeichert.');
     }
@@ -241,7 +247,7 @@ function gameView(g) {
   const an = Object.values(g.ans);
   return { view: 1, type: 'quiz', id: g.id, qi: g.qi, phase: g.phase, at: g.at, qAt: g.qAt, pAt: g.pAt, names: g.phase === 'lobby' ? Object.values(g.scores).map(x => x.name).slice(0, 40) : undefined, auto: !!g.auto, cq: g.cq ? g.cq.map(q => ({ c: q.c, w: q.w })) : undefined, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, top: Object.values(g.scores).sort((x, y) => y.p - x.p).slice(0, 8) };
 }
-function pub(s) { const c = JSON.parse(JSON.stringify(s)); delete c.settings.pin; delete c.seen; c.game = gameView(s.game); c.history = c.history.slice(0, 20); c.hasKey = !!cfg.ytKey || MOCK; return c; }
+function pub(s) { const c = JSON.parse(JSON.stringify(s)); delete c.settings.pin; delete c.settings.blockWords; delete c.seen; c.game = gameView(s.game); c.history = c.history.slice(0, 20); c.hasKey = !!cfg.ytKey || MOCK; return c; }
 function waitMin(s, idx) { let sec = s.current ? 150 : 0; for (let i = 0; i < idx; i++) sec += (s.queue[i].dur || 230) + 50; return Math.max(1, Math.round(sec / 60)); }
 
 // ---------- YouTube ----------
