@@ -106,6 +106,14 @@ Beides startest du in der Konsole über **Spiele**. Mitgemacht wird am Handy üb
 - **Im Kiosk:** Knopf „Quiz spielen“ rechts. Das Quiz läuft von selbst; geantwortet wird direkt am Bildschirm (als ein gemeinsames Team) oder per Handy über den QR-Code. „Quiz beenden“ bricht ab.
 - Eigene Fragen: Datei `js/quiz.js`, Aufbau steht oben in der Datei.
 
+## 4e. Songbuch schnell füllen und prüfen
+
+Beides im Songbuch-Dialog der Konsole (als angemeldeter DJ).
+
+- **Playlist importieren:** Link einer YouTube-Playlist einfügen (oder die Kanal-ID, die mit `UC` beginnt, dann werden alle Videos des Kanals gelesen). Die App sucht darin passende Videos zu den offenen Titeln, sortiert gesperrte vorher aus und zeigt eine Vorschau mit Haken. Danach „Ausgewählte übernehmen“. Das kostet etwa eine Kontingent-Einheit je 50 Videos, die Suche dagegen 100 je Titel – so lassen sich viele Titel an einem Tag zuordnen. Der Abgleich ist streng (alle Wörter des Titels und mindestens ein Wort des Interpreten), trotzdem die Vorschläge kurz ansehen.
+- **Videos prüfen:** Ein Knopf prüft alle zugeordneten YouTube-Videos auf: Einbetten gesperrt, in Deutschland gesperrt, altersbeschränkt, privat oder gelöscht. Betroffene Titel bekommen eine Markierung und lassen sich mit „Nur Probleme“ filtern. „Problem-Zuordnungen lösen“ macht sie wieder offen. Vor jedem größeren Auftritt einmal laufen lassen.
+- **Kontingent:** Der Dialog zeigt, wie viel vom Tageskontingent (10.000 Einheiten) dieses Gerät heute verbraucht hat. Verbrauch anderer Geräte oder der Google-Konsole wird nicht mitgezählt.
+
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 
 Der Ordner ist eine statische Website. Geeignet ist jedes HTTPS-Hosting, z. B. ein Unterordner auf dem eigenen Webspace (`karaoke.deine-domain.de`), Netlify oder GitHub Pages. Den kompletten Ordnerinhalt hochladen – fertig.

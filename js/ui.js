@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView, listDir, CID } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView, listDir, parsePlaylistId, ytPlaylist, ytVideoInfo, matchPlaylist, quotaUsed, WHY, CID } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -781,19 +781,57 @@ function statsDlg() {
 }
 
 // ============ Songbuch pflegen ============
+// ---- Prüfstand: gespeicherte Ergebnisse der Sperr-Prüfung (pro Titel, gilt nur für das geprüfte Video)
+const chkAll = () => LS.get('kk:check', {});
+const chkOf = b => { const c = chkAll()[b.id]; return c && c.v === b.vid ? c.s : ''; };
+function chkSave(map) { const c = chkAll(); for (const id in map) c[id] = map[id]; LS.set('kk:check', c); }
+// Playlist importieren: Treffer vorschlagen, gesperrte aussortieren, Auswahl übernehmen
+function playlistDlg(store, done) {
+  const inp = h('input', { class: 'in', placeholder: 'Link zur Playlist (youtube.com/playlist?list=…) oder Kanal-ID (UC…)' });
+  const msg = h('p', { class: 'mut' }), out = h('div', { class: 'stack' });
+  let busy = false;
+  const say = t => { msg.textContent = t; };
+  async function go() {
+    if (busy) return; const id = parsePlaylistId(inp.value);
+    if (!id) return say('Das ist kein Playlist-Link. Gebraucht wird ein Link mit „list=…“ oder eine Kanal-ID, die mit UC beginnt.');
+    if (!store.canSearch()) return say('Es ist kein YouTube-API-Schlüssel hinterlegt (Einstellungen → YouTube).');
+    busy = true; put(out);
+    try {
+      const vids = await ytPlaylist(id, n => say('Lade Playlist … ' + n + ' Videos'));
+      const missing = bookList().filter(b => !b.has), { matches, none } = matchPlaylist(vids, missing);
+      say('Prüfe ' + matches.length + ' Treffer auf Sperren …');
+      const info = await ytVideoInfo([...new Set(matches.map(m => m.v.vid))]);
+      const good = matches.filter(m => !info[m.v.vid].why), bad = matches.length - good.length;
+      say(vids.length + ' Videos gelesen · ' + matches.length + ' passen zu offenen Titeln · ' + bad + ' wegen Sperre aussortiert · ' + none.length + ' Titel ohne Treffer. Bitte die Vorschläge prüfen – Haken entfernen, was nicht passt.');
+      const rows = good.map(m => { const cb = h('input', { type: 'checkbox', checked: true, class: 'cbx' }); return { m, cb, el: h('label', { class: 'qrow chk' }, cb, h('div', { class: 'grow' }, h('div', { class: 'st' }, m.b.t + ' · ' + m.b.a), h('div', { class: 'sa' }, '← ' + m.v.title + (m.v.ch ? ' · ' + m.v.ch : ''))), h('a', { class: 'btn ghost', href: mediaUrl(m.v.vid), target: '_blank', rel: 'noopener', title: 'Vorab ansehen', onclick: e => e.stopPropagation() }, '↗')) }; });
+      put(out, h('div', { class: 'list scroll tall' }, rows.map(r => r.el)), rows.length ? h('div', { class: 'row end' }, h('button', { class: 'btn primary', onclick: () => {
+        const sel = rows.filter(r => r.cb.checked), ck = {};
+        for (const r of sel) { bookSetVid(r.m.b.id, r.m.v.vid, info[r.m.v.vid].dur); ck[r.m.b.id] = { v: r.m.v.vid, s: 'ok', at: Date.now() }; }
+        chkSave(ck); store.bookChanged(); toast(sel.length + ' Titel zugeordnet.', 'good'); done(); m.close();
+      } }, 'Ausgewählte übernehmen')) : null);
+    } catch (e) { say(e.message); }
+    busy = false;
+  }
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  const m = modal('Playlist importieren', h('div', { class: 'stack' },
+    h('p', { class: 'mut' }, 'Liest eine ganze Karaoke-Playlist und ordnet passende Videos den offenen Titeln zu. Das kostet nur etwa eine Kontingent-Einheit je 50 Videos statt 100 je Suche. Gesperrte oder nicht einbettbare Videos werden vorher aussortiert. Bei einem Kanal die Kanal-ID (UC…) eintragen: Dann werden alle seine Videos gelesen.'),
+    h('div', { class: 'row' }, inp, h('button', { class: 'btn primary', onclick: go }, 'Laden')), msg, out), { wide: true });
+}
 function songbookDlg(store) {
   const tools = h('div', { class: 'stack' });
   const info = h('p', { class: 'mut' }), list = h('div', { class: 'list scroll tall' }), q = h('input', { class: 'in', type: 'search', placeholder: 'Filtern …' });
-  const only = toggle('Nur Titel ohne Video', false, () => draw());
+  const only = toggle('Nur Titel ohne Video', false, () => draw()), onlyBad = toggle('Nur Probleme', false, () => draw());
   const nIn = h('input', { class: 'in', type: 'number', value: 15, min: 1, max: 90, style: 'width:5.5em' });
   let busy = false;
   function draw() {
     const ed = canEditBook(); tools.style.display = ed ? '' : 'none';
-    const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked;
-    info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.' + (!cloud.url ? '' : dj.isDj ? ' Cloud-Songbuch aktiv: Änderungen gelten für alle Geräte.' + (cloudBook.err ? ' Letztes Speichern fehlgeschlagen: ' + cloudBook.err : '') : ' Zum Ändern bitte als DJ anmelden (Einstellungen → DJ-Anmeldung).');
-    put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has)).map(b => h('div', { class: 'qrow' },
+    const all = bookList(), okN = all.filter(b => b.has).length, f = slug(q.value), onlyMissing = only.querySelector('input').checked, onlyProb = onlyBad.querySelector('input').checked;
+    const probs = all.filter(b => b.has && chkOf(b) && chkOf(b) !== 'ok'); probBtn.style.display = ed && probs.length ? '' : 'none'; probBtn.textContent = probs.length + ' Problem-Zuordnungen lösen';
+    info.textContent = okN + ' von ' + all.length + ' Titeln haben ein geprüftes Video. Gäste im Kiosk sehen ohne freie Suche nur diese.' + (!cloud.url ? '' : dj.isDj ? ' Cloud-Songbuch aktiv: Änderungen gelten für alle Geräte.' + (cfg.ytKey ? ' Kontingent heute (nur dieses Gerät gezählt): etwa ' + quotaUsed() + ' von 10.000 Einheiten.' : '') + (cloudBook.err ? ' Letztes Speichern fehlgeschlagen: ' + cloudBook.err : '') : ' Zum Ändern bitte als DJ anmelden (Einstellungen → DJ-Anmeldung).');
+    put(list, ...all.filter(b => (!f || slug(b.t + ' ' + b.a).includes(f)) && (!onlyMissing || !b.has) && (!onlyProb || (b.has && chkOf(b) && chkOf(b) !== 'ok'))).slice(0, 300).map(b => h('div', { class: 'qrow' },
       b.has ? tImg(b.vid) : h('div', { class: 'noimg' }, '–'),
       h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a + ' · ' + b.g)),
+      b.has && chkOf(b) && chkOf(b) !== 'ok' ? h('span', { class: 'tag bad' }, WHY[chkOf(b)] || 'Problem') : null,
       b.has ? h('a', { class: 'btn ghost', href: mediaUrl(b.vid), target: '_blank', rel: 'noopener', title: 'Video prüfen' }, '↗') : null,
       ed && b.has ? h('button', { class: 'btn ghost icon', title: 'Zuordnung lösen', onclick: () => { bookSetVid(b.id, ''); store.bookChanged(); draw(); } }, ico('x')) : null,
       ed && b.id.slice(0, 2) === 'c-' ? h('button', { class: 'btn ghost', title: 'Eigenen Titel löschen', onclick: () => { bookRemoveCustom(b.id); store.bookChanged(); draw(); } }, 'Löschen') : null,
@@ -814,6 +852,18 @@ function songbookDlg(store) {
     busy = false; store.bookChanged(); draw();
     say((n ? n + ' Titel zugeordnet – bitte stichprobenartig prüfen. ' : err ? 'Kein Titel zugeordnet. ' : 'Nichts zuzuordnen. ') + (miss ? miss + ' Titel ohne Treffer. ' : '') + err);
   }
+  const probBtn = h('button', { class: 'btn', onclick: () => confirmDlg('Die Zuordnung bei allen Titeln mit Problem lösen? Danach sind sie wieder offen und lassen sich neu zuordnen.', 'Lösen', () => { for (const b of bookList().filter(x => x.has && chkOf(x) && chkOf(x) !== 'ok')) bookSetVid(b.id, ''); store.bookChanged(); draw(); say('Zuordnungen gelöst.'); }) }, '');
+  async function check() {
+    if (busy) return; if (!store.canSearch()) return say('Es ist kein YouTube-API-Schlüssel hinterlegt (Einstellungen → YouTube).');
+    const yt = bookList().filter(b => b.has && !isFile(b.vid)); if (!yt.length) return say('Es gibt noch keine zugeordneten YouTube-Videos.');
+    busy = true; say('Prüfe ' + yt.length + ' Videos …');
+    try {
+      const info = await ytVideoInfo([...new Set(yt.map(b => b.vid))]), ck = {}; let bad = 0;
+      for (const b of yt) { const w = (info[b.vid] || {}).why || ''; if (w) bad++; ck[b.id] = { v: b.vid, s: w || 'ok', at: Date.now() }; }
+      chkSave(ck); draw(); say(bad ? bad + ' von ' + yt.length + ' Videos haben ein Problem – im Filter „Nur Probleme“ ansehen und ersetzen. Prüfung abgeschlossen.' : 'Alle ' + yt.length + ' Videos sind in Ordnung (einbettbar, nicht gesperrt). Länderbeschränkungen gelten für Deutschland.');
+    } catch (e) { say(e.message); }
+    busy = false;
+  }
   function matchFiles() {
     let n = 0;
     for (const b of bookList().filter(x => !x.has)) {
@@ -832,12 +882,12 @@ function songbookDlg(store) {
   q.addEventListener('input', draw);
   cloudBook.pull().then(ch => { if (ch) draw(); }).catch(() => { });
   put(tools,
-    h('div', { class: 'row wrap' }, FILES.length ? h('button', { class: 'btn', onclick: matchFiles }, 'Eigene Dateien zuordnen (' + FILES.length + ')') : null, h('button', { class: 'btn', onclick: auto }, 'Automatisch zuordnen'), nIn, h('span', { class: 'mut' }, 'Titel pro Durchlauf (je Titel 1 Suche aus dem Tageskontingent)')),
+    h('div', { class: 'row wrap' }, FILES.length ? h('button', { class: 'btn', onclick: matchFiles }, 'Eigene Dateien zuordnen (' + FILES.length + ')') : null, h('button', { class: 'btn', onclick: () => playlistDlg(store, draw) }, 'Playlist importieren'), h('button', { class: 'btn', onclick: check }, 'Videos prüfen'), probBtn, h('button', { class: 'btn', onclick: auto }, 'Automatisch zuordnen'), nIn, h('span', { class: 'mut' }, 'Titel pro Durchlauf (je Titel 1 Suche aus dem Tageskontingent)')),
     autoMsg,
     h('div', { class: 'row wrap' }, ct, ca, h('button', { class: 'btn', onclick: () => { if (!ct.value.trim()) return; bookAddCustom(clean(ct.value, 90), clean(ca.value, 60)); ct.value = ca.value = ''; store.bookChanged(); draw(); } }, 'Titel anlegen')),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: exp }, 'Exportieren'), h('button', { class: 'btn', onclick: () => file.click() }, 'Importieren'), file, h('span', { class: 'mut' }, cloud.url ? 'Als Sicherung – der Abgleich zwischen den Geräten läuft über die Cloud.' : 'So wandert das Songbuch vom Mac aufs iPad.')));
   const off = () => { if (tools.isConnected) draw(); }; dj.on(off);
-  modal('Songbuch', h('div', { class: 'stack' }, info, h('div', { class: 'row wrap' }, q, only), list, tools), { wide: true });
+  modal('Songbuch', h('div', { class: 'stack' }, info, h('div', { class: 'row wrap' }, q, only, onlyBad), list, tools), { wide: true });
   draw();
 }
 

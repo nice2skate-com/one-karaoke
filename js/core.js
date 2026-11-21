@@ -277,6 +277,26 @@ function cleanTitle(raw) {
   return p.length >= 2 ? { a: p[0].trim(), t: p.slice(1).join(' - ').trim() } : { a: '', t: s || String(raw || '') };
 }
 function isoDur(d) { const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d || ''); return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0; }
+// ---------- YouTube-Zugang: ein Weg für alle Anfragen, mit Kontingent-Zähler (Schätzung für dieses Gerät) ----------
+const pacificDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+function quotaUsed() { const q = LS.get('kk:quota', {}); return q.day === pacificDay() ? q.used || 0 : 0; }
+function quotaAdd(n) { LS.set('kk:quota', { day: pacificDay(), used: quotaUsed() + n }); }
+async function ytApi(path, params, cost) {
+  if (!cfg.ytKey) throw new Error('Kein YouTube-API-Schlüssel hinterlegt.');
+  let r;
+  try { r = await fetch('https://www.googleapis.com/youtube/v3/' + path + '?' + new URLSearchParams(Object.assign({}, params, { key: cfg.ytKey.trim() }))); }
+  catch (e) { throw new Error('Google ist von diesem Browser aus nicht erreichbar (' + e.message + '). Meist liegt das an der Internetverbindung oder an einem Werbeblocker bzw. einer Browser-Erweiterung.'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason, msg = (j.error && j.error.message) || '';
+    if (/quota|rateLimit|dailyLimit/i.test(reason || '') || /quota/i.test(msg)) throw new Error('Das YouTube-Tageskontingent ist aufgebraucht – ab etwa 9 Uhr morgens geht es wieder.');
+    // "Permission denied on the service" ist Googles Sammelmeldung: Kontingent leer ODER Schlüssel für diese Adresse nicht freigegeben
+    if (/permission denied on the service/i.test(msg)) throw new Error('Google lehnt die Anfrage ab (Status ' + r.status + '). Entweder ist das Tageskontingent aufgebraucht, oder der Schlüssel ist für die Adresse ' + location.origin + ' nicht freigegeben bzw. nicht richtig eingetragen.');
+    if (r.status === 404 && /playlist/i.test(msg + reason)) throw new Error('Diese Playlist gibt es nicht oder sie ist privat.');
+    throw new Error('YouTube-Anfrage fehlgeschlagen' + (msg ? ': ' + msg : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
+  }
+  quotaAdd(cost); return j;
+}
 async function ytSearch(q) {
   q = clean(q, 80); if (!q) return [];
   const k = lc(q), cache = LS.get('kk:sc', {});
@@ -287,22 +307,10 @@ async function ytSearch(q) {
   } else {
     if (!cfg.ytKey) throw new Error('Kein YouTube-API-Schlüssel hinterlegt.');
     const term = /karaoke/i.test(q) ? q : q + ' karaoke';
-    const base = 'https://www.googleapis.com/youtube/v3/';
-    let r;
-    try { r = await fetch(base + 'search?part=snippet&type=video&videoEmbeddable=true&safeSearch=none&maxResults=10&q=' + encodeURIComponent(term) + '&key=' + encodeURIComponent(cfg.ytKey.trim())); }
-    catch (e) { throw new Error('Google ist von diesem Browser aus nicht erreichbar (' + e.message + '). Meist liegt das an der Internetverbindung oder an einem Werbeblocker bzw. einer Browser-Erweiterung.'); }
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      const reason = j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
-      const msg = (j.error && j.error.message) || '';
-      if (/quota|rateLimit|dailyLimit/i.test(reason || '') || /quota/i.test(msg)) throw new Error('Das YouTube-Tageskontingent ist aufgebraucht. Bitte Songbuch oder Link nutzen – ab etwa 9 Uhr morgens geht die Suche wieder.');
-      // "Permission denied on the service" ist Googles Sammelmeldung: Kontingent leer ODER Schlüssel für diese Adresse nicht freigegeben
-      if (/permission denied on the service/i.test(msg)) throw new Error('Google lehnt die Suche ab (Status ' + r.status + '). Entweder ist das Tageskontingent aufgebraucht, oder der Schlüssel ist für die Adresse ' + location.origin + ' nicht freigegeben bzw. nicht richtig eingetragen.');
-      throw new Error('YouTube-Suche fehlgeschlagen' + (msg ? ': ' + msg : '.') + ' (Status ' + r.status + (reason ? ', ' + reason : '') + ')');
-    }
+    const j = await ytApi('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', safeSearch: 'none', maxResults: 10, q: term }, 100);
     items = (j.items || []).filter(i => i.id && i.id.videoId).map(i => ({ vid: i.id.videoId, title: decodeEnt(i.snippet.title), ch: decodeEnt(i.snippet.channelTitle), dur: 0 }));
     try {
-      const d = await (await fetch(base + 'videos?part=contentDetails&id=' + items.map(i => i.vid).join(',') + '&key=' + encodeURIComponent(cfg.ytKey))).json();
+      const d = await ytApi('videos', { part: 'contentDetails', id: items.map(i => i.vid).join(',') }, 1);
       const map = {}; (d.items || []).forEach(v => map[v.id] = isoDur(v.contentDetails.duration));
       items.forEach(i => i.dur = map[i.vid] || 0);
     } catch (e) { /* Dauer ist nur Komfort */ }
@@ -311,6 +319,70 @@ async function ytSearch(q) {
   const keys = Object.keys(cache); if (keys.length > 300) keys.sort((x, y) => cache[x].at - cache[y].at).slice(0, 60).forEach(x => delete cache[x]);
   LS.set('kk:sc', cache);
   return items;
+}
+// ---------- Playlist-Import und Sperr-Prüfung (kosten je Anfrage nur 1 Einheit statt 100 wie die Suche) ----------
+function parsePlaylistId(str) {
+  str = String(str || '').trim();
+  const m = str.match(/[?&]list=([\w-]{10,})/); if (m) return m[1];
+  if (/^UC[\w-]{22}$/.test(str)) return 'UU' + str.slice(2); // Kanal-ID -> Playlist aller Uploads
+  const c = str.match(/youtube\.com\/channel\/(UC[\w-]{22})/); if (c) return 'UU' + c[1].slice(2);
+  return /^(PL|UU|OL|FL|LL)[\w-]{10,}$/.test(str) ? str : '';
+}
+async function ytPlaylist(id, progress) {
+  if (MOCK && !cfg.ytKey) {
+    const miss = bookList().filter(b => !b.has).slice(0, 14);
+    return miss.map((b, i) => ({ vid: ('mockpl' + String(i).padStart(5, '0')), title: b.a + ' - ' + b.t + ' (Karaoke Version)', ch: 'Demo Karaoke' })).concat([{ vid: 'mockplblock', title: 'Niemand - Unbekannt (Karaoke)', ch: 'Demo Karaoke' }]);
+  }
+  const out = []; let token = '';
+  for (let page = 0; page < 40; page++) {
+    const j = await ytApi('playlistItems', Object.assign({ part: 'snippet', playlistId: id, maxResults: 50 }, token ? { pageToken: token } : {}), 1);
+    for (const it of j.items || []) { const sn = it.snippet || {}, v = sn.resourceId && sn.resourceId.videoId; if (v && !/^(private|deleted) video$/i.test(sn.title || '')) out.push({ vid: v, title: decodeEnt(sn.title || ''), ch: decodeEnt(sn.videoOwnerChannelTitle || '') }); }
+    if (progress) progress(out.length);
+    token = j.nextPageToken || ''; if (!token) break;
+  }
+  return out;
+}
+const WHY = { embed: 'Einbetten gesperrt', age: 'Altersbeschränkt', region: 'In Deutschland gesperrt', private: 'Privat', missing: 'Video gelöscht' };
+// Eigenschaften zu Videos holen: Einbettbarkeit, Ländersperre, Altersbeschränkung, Länge (50 Videos je Anfrage)
+async function ytVideoInfo(ids) {
+  const res = {};
+  if (MOCK && !cfg.ytKey) { ids.forEach((v, i) => res[v] = /00003$|block/.test(v) ? { why: 'embed', dur: 200 } : { why: '', dur: 180 + i }); return res; }
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50), j = await ytApi('videos', { part: 'status,contentDetails', id: batch.join(',') }, 1), seen = {};
+    for (const v of j.items || []) {
+      const st = v.status || {}, cd = v.contentDetails || {}, rr = cd.regionRestriction; let why = '';
+      if (st.privacyStatus === 'private') why = 'private';
+      else if (st.embeddable === false) why = 'embed';
+      else if (cd.contentRating && cd.contentRating.ytRating === 'ytAgeRestricted') why = 'age';
+      else if (rr && ((rr.blocked || []).includes('DE') || (rr.allowed && !rr.allowed.includes('DE')))) why = 'region';
+      seen[v.id] = true; res[v.id] = { why, dur: isoDur(cd.duration) };
+    }
+    batch.forEach(v => { if (!seen[v]) res[v] = { why: 'missing', dur: 0 }; });
+  }
+  return res;
+}
+// Welches Video aus einer Playlist passt zu welchem Titel? Alle Wörter des Titels müssen vorkommen, vom Interpreten mindestens ein Wort.
+const STOPW = new Set(['the', 'a', 'an', 'of', 'in', 'to', 'on', 'is', 'and', 'my', 'me', 'you', 'i', 'it', 'de', 'la', 'le', 'der', 'die', 'das', 'und', 'ein', 'eine']);
+const NOISEW = new Set(['karaoke', 'karaokes', 'version', 'instrumental', 'instrumentals', 'lyrics', 'with', 'style', 'originally', 'performed', 'by', 'sing', 'king', 'karafun', 'hd', '4k', 'official', 'video', 'backing', 'track', 'tracks', 'cover', 'no', 'vocals', 'vocal', 'lead', 'stingray', 'zoom', 'vocalstar', 'sunfly', 'feat', 'ft', 'featuring', 'from', 'best', 'full', 'original', 'key', 'playback', 'mit', 'text', 'male', 'female', 'lower', 'higher', 'tonart']);
+const ARTSTOP = new Set(['the', 'and', 'feat', 'ft', 'with', 'die', 'der', 'das', 'von']);
+const toks = x => slug(x).split('-').filter(Boolean);
+function matchPlaylist(videos, books) {
+  const vs = videos.map(v => { const t = toks(v.title); return Object.assign({ toks: t, set: new Set(t) }, v); });
+  const matches = [], none = [];
+  for (const b of books) {
+    let tt = toks(b.t).filter(t => !STOPW.has(t)); if (!tt.length) tt = toks(b.t);
+    const at = toks(b.a).filter(t => t.length > 2 && !ARTSTOP.has(t)), need = tt.length > 5 ? .8 : 1;
+    let best = null;
+    for (const v of vs) {
+      const cov = tt.filter(t => v.set.has(t)).length / tt.length; if (cov < need) continue;
+      const artOk = at.length === 0 || at.some(t => v.set.has(t)); if (!artOk) continue;
+      const extra = v.toks.filter(t => !NOISEW.has(t) && !STOPW.has(t) && !tt.includes(t) && !at.includes(t)).length;
+      const score = cov * 10 + (at.length ? 3 : 0) - extra * .4;
+      if (!best || score > best.score) best = { b, v, score };
+    }
+    if (best) matches.push(best); else none.push(b);
+  }
+  return { matches, none };
 }
 // Titel eines Videos nachschlagen; erkennt nebenbei, ob der Kanal das Einbetten verbietet
 async function ytTitle(vid) {
@@ -588,7 +660,7 @@ window.KK = {
   initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
   LocalStore, RemoteStore, dj, cloudBook, playStats,
   // Mit Cloud-Songbuch darf nur der angemeldete DJ das Songbuch ändern
-  listDir, keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView,
+  parsePlaylistId, ytPlaylist, ytVideoInfo, matchPlaylist, quotaUsed, WHY, listDir, keyOk, clampKey, quizFind, quizOf, quizFiles, quizOrder, gameView,
   canEditBook: () => !cloud.url || MOCK || dj.isDj
 };
 })();
