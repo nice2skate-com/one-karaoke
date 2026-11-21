@@ -181,3 +181,20 @@ input[type=range] { width: 100%; accent-color: var(--bronze); }
 .fake { position: absolute; inset: 0; }
 .keyctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; } .keyctl b { min-width: 2.2em; text-align: center; font-size: 1.15rem; } .keyctl .btn.icon { font-size: 1.3rem; }
 .mut.small { font-size: .85rem; }
+/* Spiele */
+.card .c-game { animation: none; width: 100%; max-width: 92%; }
+.card h1.q { font-size: clamp(1.2rem, min(6cqh, 4.2cqw), 4rem); font-weight: 400; }
+.card .vs { font-style: normal; color: var(--bronze); font-size: .6em; }
+.qgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; } .qgrid.two { grid-template-columns: 1fr 1fr; }
+.qa { display: flex; align-items: center; gap: 12px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line2); background: var(--graphite); color: var(--offwhite); font: inherit; font-weight: 500; min-height: 56px; }
+button.qa { cursor: pointer; } button.qa:disabled { cursor: default; opacity: .9; }
+.qa b { color: var(--bronze); flex: none; } .qa.picked { border-color: var(--bronze); background: rgba(183, 154, 107, .16); }
+.qa.ok { background: var(--bronze); border-color: var(--bronze); color: var(--anthracite); } .qa.ok b { color: var(--anthracite); } .qa.wrong { opacity: .55; }
+.card .qgrid { gap: 1.6cqh 1.6cqw; margin-top: 1cqh; } .card .qa { font-size: clamp(.95rem, 3.4cqh, 2.2rem); padding: 2cqh 2cqw; min-height: 0; }
+.toplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; } .toplist li { display: flex; gap: 12px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.card .toplist { max-width: 60cqw; font-size: clamp(.9rem, 3cqh, 1.9rem); }
+.bars { display: flex; flex-direction: column; gap: 2cqh; width: 100%; max-width: 70cqw; } .bar { position: relative; display: flex; justify-content: space-between; padding: 1.6cqh 2cqw; border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; font-size: clamp(1rem, 3.2cqh, 2rem); }
+.bar i { position: absolute; inset: 0 auto 0 0; background: rgba(183, 154, 107, .35); } .bar span, .bar b { position: relative; }
+.gameqr { display: flex; align-items: center; gap: 2cqw; color: var(--grey); font-size: clamp(.8rem, 2.2cqh, 1.4rem); } .card .gameqr .qr { width: clamp(80px, 18cqh, 200px); }
+.gamepanel { border: 1px solid rgba(183, 154, 107, .5); border-radius: var(--r); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.st.wrap { white-space: normal; }

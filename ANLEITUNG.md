@@ -69,6 +69,24 @@ Auf dem **iPad** muss die App im Internet liegen (siehe 5.), weil das iPad keine
 - Das Tempo bleibt gleich. Mit geänderter Tonart ist der Ton etwa eine Zehntelsekunde verzögert; bei „Original“ läuft er unverändert durch.
 - Größere Sprünge (ab etwa ±4) klingen hörbar bearbeitet.
 
+## 4c. KaraFun-Modus
+
+KaraFun lässt sich vom Mac oder iPad aus nicht fernsteuern. Die App übernimmt deshalb Anmeldung, Reihenfolge und Ankündigung, abgespielt wird von Hand in KaraFun.
+
+- Einschalten: Einstellungen → **KaraFun-Modus**. Titel ohne Video gelten dann als KaraFun-Titel statt als offener Wunsch.
+- Ablauf pro Song: „Nächsten ankündigen“ → Bühnenbild zeigt Name und Titel → **Titel kopieren** und in KaraFun suchen, dort starten → nach dem Song in der Konsole **Fertig**.
+- Tonart: am Eintrag einstellbar (Stift) als Merkhilfe. Die Konsole erinnert daran, eingestellt wird in KaraFun.
+- Auf dem Beamer muss während des Songs das KaraFun-Fenster vorn liegen, davor und danach das Bühnenbild.
+
+## 4d. Battle und Musik-Quiz
+
+Beides startest du in der Konsole über **Spiele**. Mitgemacht wird am Handy über den QR-Code der Anmeldung.
+
+- **Battle:** zwei Namen eintragen (vorgeschlagen sind die beiden letzten Auftritte) → „Abstimmung starten“. Das Publikum stimmt ab, jede Person hat eine Stimme und kann sie bis zur Auflösung ändern. „Auflösen“ zeigt Sieger und Prozente.
+- **Quiz:** 20 Quizze mit je 8 Fragen. Die Frage steht auf dem Bühnenbild, vier Antworten am Handy. „Auflösen“ zeigt die richtige Antwort und die Rangliste, „Nächste Frage“ geht weiter, am Ende steht der Endstand.
+- Punkte: 100 für die richtige Antwort plus bis zu 50 für Schnelligkeit (innerhalb von 20 Sekunden).
+- Eigene Fragen: Datei `js/quiz.js`, Aufbau steht oben in der Datei.
+
 ## 5. Ins Internet stellen (für iPad und Handy-Anmeldung)
 
 Der Ordner ist eine statische Website. Geeignet ist jedes HTTPS-Hosting, z. B. ein Unterordner auf dem eigenen Webspace (`karaoke.deine-domain.de`), Netlify oder GitHub Pages. Den kompletten Ordnerinhalt hochladen – fertig.

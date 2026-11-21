@@ -102,13 +102,14 @@ function finish(s, sung, auto) {
   s.current = null; s.play.want = 'pause'; s.play.seek = null; s.now = { st: 'idle' };
   if (auto !== false && s.settings.autoNext && s.queue.length) toStage(s);
 }
-const SETTABLE = ['signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
+const GUEST_ACTS = ['add', 'vote', 'answer'];
+const SETTABLE = ['karafun', 'signupOpen', 'approve', 'maxPerGuest', 'autoNext', 'autoStart', 'fair', 'formal', 'guestSearch', 'bar', 'pin', 'ticker'];
 
 function reduce(s, a, x, m) {
   x = x || {}; m = m || { from: 'dj' };
   const S = s.settings, dj = m.from === 'dj' || m.from === 'player';
   if (m.rid) { s.seen = s.seen || []; if (s.seen.includes(m.rid)) return { ok: false, dup: true }; s.seen.push(m.rid); if (s.seen.length > 80) s.seen.shift(); }
-  if (!dj && a !== 'add' && !(m.from === 'kiosk' && (a === 'play' || a === 'next' || (a === 'key' && s.current && x.id === s.current.id)))) return fail('Nicht erlaubt.');
+  if (!dj && !GUEST_ACTS.includes(a) && !(m.from === 'kiosk' && (a === 'play' || a === 'next' || (a === 'key' && s.current && x.id === s.current.id)))) return fail('Nicht erlaubt.');
   const find = id => s.queue.find(q => q.id === id) || (s.current && s.current.id === id ? s.current : null);
   switch (a) {
     case 'add': {
@@ -178,6 +179,33 @@ function reduce(s, a, x, m) {
       return ok();
     }
     case 'set': { for (const k of SETTABLE) if (k in x) S[k] = k === 'maxPerGuest' ? Math.max(1, Math.min(9, +x[k] || 1)) : k === 'autoStart' ? Math.max(0, Math.min(60, +x[k] || 0)) : k === 'ticker' ? clean(x[k], 140) : k === 'pin' ? (clean(x[k], 8) || S.pin) : x[k]; if ('name' in x) s.name = clean(x.name, 30) || s.name; return ok(); }
+    // Spiele: Battle (Abstimmung zwischen zwei Auftritten) und Musik-Quiz
+    case 'game': {
+      const g = s.game, now = Date.now();
+      if (x.op === 'battle') { if (!clean(x.a, 28) || !clean(x.b, 28)) return fail('Bitte beide Namen eintragen.'); s.game = { type: 'battle', a: clean(x.a, 28), b: clean(x.b, 28), phase: 'vote', votes: {}, at: now }; return ok(); }
+      if (x.op === 'quiz') { if (!quizFind(x.id)) return fail('Quiz nicht gefunden.'); s.game = { type: 'quiz', id: x.id, qi: 0, phase: 'q', qAt: now, ans: {}, scores: {}, at: now }; return ok(); }
+      if (!g) return fail();
+      if (x.op === 'end') { s.game = null; return ok(); }
+      if (x.op === 'reveal') {
+        if (g.type === 'battle') { g.phase = 'result'; return ok(); }
+        if (g.phase !== 'q') return fail();
+        for (const cid in g.ans) { const a = g.ans[cid], sc = g.scores[cid] || (g.scores[cid] = { name: a.name, p: 0 }); sc.name = a.name; if (a.i === 0) sc.p += 100 + Math.round(50 * Math.max(0, 1 - a.t / 20000)); }
+        g.phase = 'reveal'; return ok();
+      }
+      if (x.op === 'next' && g.type === 'quiz') {
+        if (g.phase === 'q') return fail('Bitte zuerst auflösen.');
+        if (g.qi + 1 < quizFind(g.id).q.length) { g.qi++; g.phase = 'q'; g.qAt = now; g.ans = {}; } else g.phase = 'end';
+        return ok();
+      }
+      return fail();
+    }
+    case 'vote': { const g = s.game; if (!g || g.type !== 'battle' || g.phase !== 'vote') return fail('Die Abstimmung ist beendet.'); if (x.side !== 'a' && x.side !== 'b') return fail(); g.votes[m.cid || 'x' + uid()] = x.side; return ok('Stimme gezählt.'); }
+    case 'answer': {
+      const g = s.game; if (!g || g.type !== 'quiz' || g.phase !== 'q') return fail('Diese Frage ist schon geschlossen.');
+      const name = clean(x.name, 28), i = Math.round(+x.i); if (!m.cid || !name) return fail('Bitte zuerst einen Namen eintragen.'); if (!(i >= 0 && i <= 3)) return fail();
+      if (g.ans[m.cid]) return fail('Antwort ist schon abgegeben.');
+      g.ans[m.cid] = { i, t: Date.now() - g.qAt, name }; return ok('Antwort gespeichert.');
+    }
     case 'mode': { if (x.mode !== 'kiosk' && x.mode !== 'stage') return fail(); if (s.mode === x.mode) return { ok: false }; s.mode = x.mode; S.approve = x.mode !== 'kiosk'; S.guestSearch = x.mode === 'kiosk'; if (s.name === 'Mainstage' || s.name === 'Nebenraum') s.name = x.mode === 'kiosk' ? 'Nebenraum' : 'Mainstage'; return ok(); }
     case 'clear': {
       if (x.what === 'queue' || x.what === 'all') { s.queue = []; s.inbox = []; }
@@ -188,7 +216,21 @@ function reduce(s, a, x, m) {
   }
   return fail('Unbekannte Aktion.');
 }
-function pub(s) { const c = JSON.parse(JSON.stringify(s)); delete c.settings.pin; delete c.seen; c.history = c.history.slice(0, 20); c.hasKey = !!cfg.ytKey || MOCK; return c; }
+const quizFind = id => (window.KK_QUIZ || []).find(q => q.id === id);
+// Reihenfolge der vier Antworten: auf allen Geräten gleich gemischt; Wert 0 = richtige Antwort
+function quizOrder(id, qi) {
+  let h = 2166136261; for (const ch of id + ':' + qi) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const o = [0, 1, 2, 3]; for (let i = 3; i > 0; i--) { h = Math.imul(h ^ (h >>> 13), 1274126177); const j = (h >>> 0) % (i + 1); [o[i], o[j]] = [o[j], o[i]]; }
+  return o;
+}
+// Öffentliche Sicht auf ein Spiel: nur Zählerstände, keine einzelnen Stimmen
+function gameView(g) {
+  if (!g || g.view) return g || null;
+  if (g.type === 'battle') { const v = Object.values(g.votes); return { view: 1, type: 'battle', a: g.a, b: g.b, phase: g.phase, at: g.at, ca: v.filter(x => x === 'a').length, cb: v.filter(x => x === 'b').length }; }
+  const an = Object.values(g.ans);
+  return { view: 1, type: 'quiz', id: g.id, qi: g.qi, phase: g.phase, at: g.at, count: an.length, right: an.filter(a => a.i === 0).length, players: Object.keys(g.scores).length, top: Object.values(g.scores).sort((x, y) => y.p - x.p).slice(0, 8) };
+}
+function pub(s) { const c = JSON.parse(JSON.stringify(s)); delete c.settings.pin; delete c.seen; c.game = gameView(s.game); c.history = c.history.slice(0, 20); c.hasKey = !!cfg.ytKey || MOCK; return c; }
 function waitMin(s, idx) { let sec = s.current ? 150 : 0; for (let i = 0; i < idx; i++) sec += (s.queue[i].dur || 230) + 50; return Math.max(1, Math.round(sec / 60)); }
 
 // ---------- YouTube ----------
@@ -463,8 +505,8 @@ class LocalStore {
       if (m.t === 'hello') { if (!helloT) helloT = setTimeout(() => { helloT = null; push(); bus.send({ t: 'book', b: bookPub() }); }, 700); return; }
       if (m.t === 'act') {
         const isDj = m.pin && String(m.pin) === String(this.state.settings.pin);
-        if (!isDj && m.a !== 'add') return bus.send({ t: 'ack', rid: m.rid, ok: false, pin: true, msg: 'PIN fehlt oder ist falsch.' });
-        if (!isDj) { const t = Date.now(); if (t - (rate[m.cid] || 0) < 1200) return bus.send({ t: 'ack', rid: m.rid, ok: false, msg: 'Einen Moment bitte …' }); rate[m.cid] = t; }
+        if (!isDj && !GUEST_ACTS.includes(m.a)) return bus.send({ t: 'ack', rid: m.rid, ok: false, pin: true, msg: 'PIN fehlt oder ist falsch.' });
+        if (!isDj && m.a === 'add') { const t = Date.now(); if (t - (rate[m.cid] || 0) < 1200) return bus.send({ t: 'ack', rid: m.rid, ok: false, msg: 'Einen Moment bitte …' }); rate[m.cid] = t; }
         const r = await this.dispatch(m.a, m.x, { from: isDj ? 'dj' : 'guest', cid: clean(m.cid, 20), rid: clean(m.rid, 20) });
         if (!r.dup) bus.send({ t: 'ack', rid: m.rid, ok: r.ok, msg: r.msg });
         return;
@@ -532,7 +574,7 @@ window.KK = {
   initState, reduce, pub, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytSearch, ytTitle, loadYT, loadScript,
   LocalStore, RemoteStore, dj, cloudBook, playStats,
   // Mit Cloud-Songbuch darf nur der angemeldete DJ das Songbuch ändern
-  keyOk, clampKey,
+  keyOk, clampKey, quizFind, quizOrder, gameView,
   canEditBook: () => !cloud.url || MOCK || dj.isDj
 };
 })();

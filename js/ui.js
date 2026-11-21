@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const { P, MOCK, LS, lc, clean, slug, fmtDur, rndCode, cfg, saveCfg, cloud, eventCode, bookList, bookFind, bookSetVid, bookAddCustom,
-  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey } = window.KK;
+  bookRemoveCustom, bookData, waitMin, parseVid, parseMedia, isFile, fileName, fileMeta, localVideos, thumb, cleanTitle, ytTitle, loadYT, LocalStore, RemoteStore, dj, cloudBook, playStats, canEditBook, keyOk, clampKey, quizFind, quizOrder, gameView, CID } = window.KK;
 const VIEW = P.get('v') || 'home';
 const BUS_TEST = P.get('bus') === 'bc';
 const $ = (s, r) => (r || document).querySelector(s);
@@ -79,6 +79,32 @@ function toggle(label, checked, onchange, help) {
   const inp = h('input', { type: 'checkbox', checked: !!checked, onchange: e => onchange(e.target.checked) });
   const el = h('label', { class: 'tog' }, inp, h('span', { class: 'sw' }), h('span', { class: 'tl' }, label, help ? h('small', null, help) : null));
   el.set = v => { inp.checked = !!v; }; return el;
+}
+
+// ============ Spiele: Battle und Quiz ============
+const LETTERS = ['A', 'B', 'C', 'D'];
+const pct = (a, b) => a + b ? Math.round(a / (a + b) * 100) : 50;
+function topList(top, n) { return h('ol', { class: 'toplist' }, top.slice(0, n).map((x, i) => h('li', null, h('span', { class: 'num' }, i + 1), h('span', { class: 'grow' }, x.name), h('b', null, x.p)))); }
+function quizGrid(g, reveal, onPick, picked) {
+  const qz = quizFind(g.id), q = qz.q[g.qi], o = quizOrder(g.id, g.qi);
+  return h('div', { class: 'qgrid' }, o.map((orig, pos) => h(onPick ? 'button' : 'div', { class: 'qa' + (reveal && orig === 0 ? ' ok' : '') + (picked === orig ? ' picked' : '') + (reveal && picked === orig && orig !== 0 ? ' wrong' : ''), disabled: onPick && (reveal || picked != null) ? true : null, onclick: onPick ? () => onPick(orig) : null },
+    h('b', null, LETTERS[pos]), h('span', null, q[1 + orig]))));
+}
+// Karte für Bühnenbild und Kiosk
+function gameCard(g, gUrl, T) {
+  const qr = gUrl ? h('div', { class: 'gameqr' }, qrBox(gUrl, 'small'), h('span', null, T('Mit dem Handy mitmachen', 'Mit dem Handy mitmachen'))) : null;
+  if (g.type === 'battle') {
+    const pa = pct(g.ca, g.cb), res = g.phase === 'result', win = g.ca === g.cb ? '' : g.ca > g.cb ? g.a : g.b;
+    return [h('div', { class: 'eyebrow' }, res ? 'Battle · Ergebnis' : 'Battle'),
+      res ? h('h1', null, win || 'Unentschieden') : h('h1', { class: 'soft' }, g.a, h('em', { class: 'vs' }, ' gegen '), g.b),
+      res ? h('div', { class: 'bars' }, [[g.a, pa, g.ca], [g.b, 100 - pa, g.cb]].map(([n, p, c]) => h('div', { class: 'bar' }, h('span', null, n), h('i', { style: 'width:' + p + '%' }), h('b', null, p + ' % · ' + c)))) : h('p', { class: 'sub' }, T('Wer hat euch mehr begeistert? Jetzt abstimmen.', 'Wer hat Sie mehr begeistert? Jetzt abstimmen.')),
+      res ? null : h('p', { class: 'sub small' }, (g.ca + g.cb) + ' Stimmen'), res ? null : qr];
+  }
+  const qz = quizFind(g.id); if (!qz) return [h('p', { class: 'sub' }, 'Quiz wird geladen …')];
+  if (g.phase === 'end') return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Endstand'), g.top.length ? h('h1', null, g.top[0].name) : h('h1', { class: 'soft' }, 'Danke fürs Mitspielen'), topList(g.top, 5)];
+  const reveal = g.phase === 'reveal';
+  return [h('div', { class: 'eyebrow' }, 'Quiz · ' + qz.title + ' · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('h1', { class: 'soft q' }, qz.q[g.qi][0]), quizGrid(g, reveal),
+    h('p', { class: 'sub small' }, reveal ? g.right + ' von ' + g.count + ' richtig' : g.count + ' Antworten'), reveal ? (g.top.length ? topList(g.top, 3) : null) : qr];
 }
 
 // ============ Player ============
@@ -212,14 +238,16 @@ function Stage(root, store, opt) {
     else if (c.phase === 'intro' && s.play.want !== 'play') mode = 'intro';
     else if (blocked) mode = 'blocked';
     else mode = 'video';
+    const gv = gameView(s.game); if (gv) mode = 'game';
     if (!c) prog.style.width = '0';
     if (s.note && now - s.note.at < 7000 && s.note.at !== render.noteAt) { render.noteAt = s.note.at; showHint(s.note.text, 7000); }
 
-    const k = [mode, c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
+    const k = [mode, gv && JSON.stringify(gv), c && c.id, c && c.name, c && c.t, c && c.vid, c && c.key, s.last && s.last.at, S.autoStart, S.formal, S.signupOpen, gUrl].join('|');
     if (k !== key) {
       key = k; clearTimeout(timer); clearInterval(timer);
       const kids = [];
-      if (mode === 'applause') {
+      if (mode === 'game') kids.push(...gameCard(gv, gUrl, T).filter(Boolean));
+      else if (mode === 'applause') {
         kids.push(h('div', { class: 'eyebrow' }, 'Applaus für'), h('h1', null, s.last.name), h('p', { class: 'sub' }, songLine(s.last)));
         timer = setTimeout(() => render(store.state), s.last.at + 6600 - now);
       } else if (mode === 'idle') {
@@ -231,7 +259,7 @@ function Stage(root, store, opt) {
       } else if (mode === 'intro' || mode === 'extern' || mode === 'error') {
         kids.push(h('div', { class: 'eyebrow' }, mode === 'extern' && c.phase === 'live' ? 'Jetzt singt' : mode === 'error' ? 'Einen Moment bitte' : opt.kiosk ? 'Jetzt an der Reihe' : 'Als Nächstes auf der Bühne'),
           h('h1', null, c.name), h('p', { class: 'sub' }, c.t + (c.a ? ' · ' + c.a : '')));
-        if (c.key && keyOk(c.vid)) kids.push(h('p', { class: 'sub small' }, 'Tonart ' + keyLabel(c.key) + ' Halbtöne'));
+        if (c.key && (keyOk(c.vid) || !c.vid)) kids.push(h('p', { class: 'sub small' }, 'Tonart ' + keyLabel(c.key) + ' Halbtöne'));
         if (mode === 'error') kids.push(h('p', { class: 'sub small' }, 'Das Video wird gerade getauscht.'));
         if (mode === 'intro' && opt.kiosk) kids.push(h('button', { class: 'btn primary huge', onclick: () => { store.dispatch('play', {}, { from: 'kiosk' }); if (api.player) api.player.kick(); } }, ico('play'), 'Start'),
           h('p', { class: 'sub small' }, T('Mikrofon in die Hand – und los.', 'Mikrofon in die Hand – und los.')));
@@ -375,7 +403,7 @@ function Picker(store, role) {
       const sel = ui.sel === b.id;
       return h('div', { class: 'srow' + (sel ? ' sel' : ''), onclick: () => { ui.sel = sel ? null : b.id; renderBook(); } },
         h('div', { class: 'grow' }, h('div', { class: 'st' }, b.t), h('div', { class: 'sa' }, b.a)),
-        role === 'dj' && !b.has ? h('span', { class: 'tag' }, 'ohne Video') : null,
+        role === 'dj' && !b.has ? h('span', { class: 'tag' }, s && s.settings.karafun ? 'KaraFun' : 'ohne Video') : null,
         sel ? h('button', { class: 'btn primary', onclick: e => { e.stopPropagation(); choose(b); } }, 'Auf die Liste') : null);
     }).concat(more > 0 ? [h('p', { class: 'mut pad' }, 'Noch ' + more + ' weitere Titel – bitte suchen oder eine Rubrik wählen.')] : []) : [h('p', { class: 'mut pad' }, kiosk && !list.length ? 'Das Songbuch wird gerade vorbereitet.' : 'Kein Treffer im Songbuch' + (role === 'guest' && !kiosk ? ' – unter „Wunsch“ nehmen wir den Titel gern auf.' : '.'))]));
   }
@@ -438,6 +466,31 @@ function viewDJ(app, room) {
   const tApprove = toggle('Wünsche erst freigeben', true, v => store.dispatch('set', { approve: v }));
   const ticker = h('input', { class: 'in', placeholder: 'Hinweis für das Bühnenbild (z. B. „Buffet ist eröffnet“)', maxLength: 140, onchange: e => store.dispatch('set', { ticker: e.target.value }) });
   const qrArea = h('div');
+  const gameBox = h('div');
+  const game = (op, x) => act('game', Object.assign({ op }, x || {}));
+  function gamesDlg() {
+    const s = store.state, hn = [...new Set(s.history.filter(x => x.sung).map(x => x.name))];
+    const a = h('input', { class: 'in', placeholder: 'Erste Person / erstes Team', value: hn[1] || '' }), b = h('input', { class: 'in', placeholder: 'Zweite Person / zweites Team', value: hn[0] || '' });
+    const sel = h('select', { class: 'in' }, (window.KK_QUIZ || []).map(q => h('option', { value: q.id }, q.title + ' (' + q.q.length + ' Fragen)')));
+    const m = modal('Spiele', h('div', { class: 'stack settings' },
+      guestUrl(store) ? null : h('div', { class: 'alert' }, 'Mitmachen können Gäste nur über die Handy-Anmeldung (QR-Code). Sie ist hier gerade nicht aktiv.'),
+      h('h4', null, 'Battle'), h('p', { class: 'mut' }, 'Zwei Auftritte treten gegeneinander an, das Publikum stimmt per Handy ab. Vorgeschlagen sind die beiden letzten Sängerinnen und Sänger.'),
+      a, b, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => game('battle', { a: a.value, b: b.value }).then(r => { if (r.ok) m.close(); }) }, 'Abstimmung starten')),
+      h('h4', null, 'Musik-Quiz'), h('p', { class: 'mut' }, 'Die Frage erscheint auf dem Bühnenbild, geantwortet wird am Handy. Richtige und schnelle Antworten bringen Punkte.'),
+      sel, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => game('quiz', { id: sel.value }).then(r => { if (r.ok) m.close(); }) }, 'Quiz starten'))), { wide: true });
+  }
+  function drawGame(s) {
+    const g = gameView(s.game); if (!g) return put(gameBox);
+    const end = h('button', { class: 'btn', onclick: () => confirmDlg('Das Spiel beenden?', 'Beenden', () => game('end')) }, 'Beenden');
+    if (g.type === 'battle') return put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Battle läuft'), h('div', { class: 'nm' }, g.a + ' gegen ' + g.b),
+      h('p', null, g.a + ': ' + g.ca + ' · ' + g.b + ': ' + g.cb + (g.phase === 'result' ? ' – Ergebnis wird gezeigt' : ' Stimmen')),
+      h('div', { class: 'row wrap' }, g.phase === 'vote' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : null, end)));
+    const qz = quizFind(g.id), q = qz && qz.q[g.qi], last = qz && g.qi + 1 >= qz.q.length;
+    put(gameBox, h('div', { class: 'gamepanel' }, h('span', { class: 'eyebrow' }, 'Quiz · ' + (qz ? qz.title : g.id) + (g.phase === 'end' ? ' · Endstand' : ' · Frage ' + (g.qi + 1) + ' von ' + (qz ? qz.q.length : '?'))),
+      g.phase !== 'end' && q ? [h('div', { class: 'st wrap' }, q[0]), h('p', { class: 'mut' }, 'Richtig: ' + q[1] + ' · ' + g.count + ' Antworten' + (g.phase === 'reveal' ? ', davon ' + g.right + ' richtig' : ''))] : null,
+      g.top.length ? topList(g.top, 5) : null,
+      h('div', { class: 'row wrap' }, g.phase === 'q' ? h('button', { class: 'btn primary', onclick: () => game('reveal') }, 'Auflösen') : g.phase === 'reveal' ? h('button', { class: 'btn primary', onclick: () => game('next') }, last ? 'Endstand zeigen' : 'Nächste Frage') : null, end)));
+  }
   const playerHint = h('div');
   let lastAlive = 0, aliveInfo = {}, hintKey = '';
   store.onAlive(m => { lastAlive = Date.now(); aliveInfo = m; drawHint(); });
@@ -477,7 +530,7 @@ function viewDJ(app, room) {
     const n = h('input', { class: 'in', value: e.name }), t = h('input', { class: 'in', value: e.t }), a = h('input', { class: 'in', value: e.a });
     const ks = h('select', { class: 'in' }, [-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6].map(k => h('option', { value: k, selected: (e.key || 0) === k }, k === 0 ? 'Original' : keyLabel(k) + ' Halbtöne ' + (k > 0 ? 'höher' : 'tiefer'))));
     const m = modal('Eintrag bearbeiten', h('div', { class: 'stack' }, field('Name', n), field('Titel', t), field('Interpret', a),
-      keyOk(e.vid) ? field('Tonart', ks, 'Das Tempo bleibt gleich.') : null,
+      keyOk(e.vid) || (!e.vid && kf()) ? field('Tonart', ks, e.vid ? 'Das Tempo bleibt gleich.' : 'Als Merkhilfe – eingestellt wird in KaraFun.') : null,
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { m.close(); resolve(e); } }, ico('video'), e.vid ? 'Video tauschen' : 'Video wählen'),
         h('button', { class: 'btn primary', onclick: () => { act('edit', { id: e.id, name: n.value, t: t.value, a: a.value, key: +ks.value }); m.close(); } }, 'Speichern'))));
   }
@@ -487,10 +540,11 @@ function viewDJ(app, room) {
     const id = slug(e.a + '-' + e.t); if (bookFind(id)) bookSetVid(id, e.vid, e.dur); else bookAddCustom(e.t, e.a, e.vid, e.dur);
     store.bookChanged(); toast('Im Songbuch gespeichert.', 'good');
   }
-  const keyCtl = e => keyOk(e.vid)
+  const kf = () => !!(store.state && store.state.settings.karafun);
+  const keyCtl = e => keyOk(e.vid) || (!e.vid && kf())
     ? h('div', { class: 'keyctl' }, h('span', { class: 'lbl' }, 'Tonart'), h('button', { class: 'btn icon', title: 'Halbton tiefer', onclick: () => act('key', { id: e.id, k: (e.key || 0) - 1 }) }, '−'),
       h('b', null, keyLabel(e.key)), h('button', { class: 'btn icon', title: 'Halbton höher', onclick: () => act('key', { id: e.id, k: (e.key || 0) + 1 }) }, '+'),
-      e.key ? h('button', { class: 'btn ghost', onclick: () => act('key', { id: e.id, k: 0 }) }, 'Original') : null, h('span', { class: 'mut' }, 'Halbtöne, Tempo bleibt gleich'))
+      e.key ? h('button', { class: 'btn ghost', onclick: () => act('key', { id: e.id, k: 0 }) }, 'Original') : null, h('span', { class: 'mut' }, e.vid ? 'Halbtöne, Tempo bleibt gleich' : 'Halbtöne – bitte in KaraFun einstellen'))
     : e.vid ? h('p', { class: 'mut small' }, 'Tonart ändern geht nur bei eigenen Videodateien im Ordner „videos“, nicht bei YouTube.') : null;
   const ib = (icon, title, fn, cls) => h('button', { class: 'btn ghost icon ' + (cls || ''), title, onclick: fn }, ico(icon));
 
@@ -498,6 +552,7 @@ function viewDJ(app, room) {
     if (!s) { put(nowBox, h('p', { class: 'mut pad' }, store.conn === 'none' ? 'Für die Fernsteuerung muss die Cloud-Verbindung eingerichtet sein (config.js).' : 'Verbinde mit dem Raum …')); return; }
     roomName.textContent = s.name + ' · ' + s.room;
     const c = s.current, S = s.settings;
+    drawGame(s);
     // Jetzt
     const kids = [];
     if (c) {
@@ -507,7 +562,10 @@ function viewDJ(app, room) {
         ib('edit', 'Bearbeiten', () => editEntry(c))));
       if (s.now.st === 'error') kids.push(h('div', { class: 'alert' }, isFile(c.vid) ? 'Die Videodatei lässt sich nicht abspielen (fehlt sie im Ordner „videos“, oder ist das Format unbekannt?).' : 'Dieses Video lässt sich nicht einbetten (YouTube-Fehler ' + (s.now.err || '?') + ').', h('button', { class: 'btn primary', onclick: () => resolve(c) }, 'Anderes Video wählen')));
       kids.push(keyCtl(c));
-      if (!c.vid) kids.push(h('div', { class: 'alert' }, 'Kein Video zugeordnet – entweder jetzt wählen oder extern abspielen (z. B. KaraFun).', h('button', { class: 'btn', onclick: () => resolve(c) }, 'Video wählen')));
+      if (!c.vid) kids.push(S.karafun
+        ? h('div', { class: 'alert' }, 'KaraFun-Titel: in KaraFun suchen und starten' + (c.key ? ', Tonart ' + keyLabel(c.key) + ' einstellen' : '') + '. Nach dem Song hier „Fertig“ drücken.',
+          h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', onclick: () => navigator.clipboard.writeText((c.a ? c.a + ' ' : '') + c.t).then(() => toast('Titel kopiert – in KaraFun einfügen.', 'good')).catch(() => toast('Kopieren nicht möglich.', 'warn')) }, 'Titel kopieren'), h('button', { class: 'btn', onclick: () => resolve(c) }, 'Stattdessen Video wählen')))
+        : h('div', { class: 'alert' }, 'Kein Video zugeordnet – entweder jetzt wählen oder extern abspielen (z. B. KaraFun).', h('button', { class: 'btn', onclick: () => resolve(c) }, 'Video wählen')));
     } else kids.push(h('div', { class: 'nowhead' }, h('div', { class: 'grow' }, h('div', { class: 'eyebrow' }, 'Bühne frei'), h('div', { class: 'sa' }, s.queue.length ? 'Als Nächstes: ' + s.queue[0].name + ' – ' + s.queue[0].t : 'Noch niemand auf der Liste.'))));
     put(nowBox, ...kids);
     if (!c) { pBar.style.width = '0'; pTime.textContent = ''; }
@@ -518,13 +576,13 @@ function viewDJ(app, room) {
     if (document.activeElement !== ticker) ticker.value = S.ticker || '';
     // Wünsche
     put(inboxBox, ...(s.inbox.length ? [h('h2', null, 'Neue Wünsche ', h('span', { class: 'count hot' }, s.inbox.length)),
-      h('div', { class: 'list' }, s.inbox.map(e => h('div', { class: 'qrow inbox' }, entryLine(e), !e.vid ? h('span', { class: 'tag' }, 'ohne Video') : null,
+      h('div', { class: 'list' }, s.inbox.map(e => h('div', { class: 'qrow inbox' }, entryLine(e), !e.vid ? h('span', { class: 'tag' }, S.karafun ? 'KaraFun' : 'ohne Video') : null,
         ib('x', 'Ablehnen', () => act('reject', { id: e.id })), h('button', { class: 'btn primary', onclick: () => act('approve', { id: e.id }) }, ico('check'), 'Aufnehmen'))))] : []));
     // Warteschlange
     qCount.textContent = s.queue.length || '';
     put(queueBox, s.queue.length ? h('div', { class: 'list' }, s.queue.map((e, i) => h('div', { class: 'qitem' },
-      h('div', { class: 'qmain' }, h('span', { class: 'num' }, i + 1), e.vid ? tImg(e.vid) : h('button', { class: 'noimg btnlike', onclick: () => resolve(e), title: 'Video wählen' }, 'Video wählen'),
-        entryLine(e), e.key && keyOk(e.vid) ? h('span', { class: 'tag' }, 'Tonart ' + keyLabel(e.key)) : null, h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
+      h('div', { class: 'qmain' }, h('span', { class: 'num' }, i + 1), e.vid ? tImg(e.vid) : h('button', { class: 'noimg btnlike', onclick: () => resolve(e), title: 'Video wählen' }, S.karafun ? 'KaraFun' : 'Video wählen'),
+        entryLine(e), e.key && (keyOk(e.vid) || !e.vid) ? h('span', { class: 'tag' }, 'Tonart ' + keyLabel(e.key)) : null, h('span', { class: 'mut' }, e.dur ? fmtDur(e.dur) : ''), e.by !== 'dj' ? h('span', { class: 'tag' }, e.by === 'kiosk' ? 'Kiosk' : 'Gast') : null),
       h('div', { class: 'qact' }, ib('top', 'Ganz nach vorn', () => act('top', { id: e.id })), ib('up', 'Nach oben', () => act('move', { id: e.id, d: -1 })), ib('down', 'Nach unten', () => act('move', { id: e.id, d: 1 })),
         ib('edit', 'Bearbeiten', () => editEntry(e)), ib('x', 'Entfernen', () => act('remove', { id: e.id })),
         h('button', { class: 'btn', onclick: () => act('stage', { id: e.id }) }, 'Auf die Bühne'))))) : h('p', { class: 'mut pad' }, 'Die Warteschlange ist leer.'));
@@ -543,12 +601,13 @@ function viewDJ(app, room) {
     h('header', { class: 'top' }, h('a', { href: link('') }, logo()), h('div', { class: 'grow' }, roomName, badge),
       store.local ? h('button', { class: 'btn', onclick: openStage }, 'Bühnenbild öffnen') : null,
       store.local ? h('button', { class: 'btn', onclick: () => songbookDlg(store) }, 'Songbuch') : null,
+      h('button', { class: 'btn', onclick: gamesDlg }, 'Spiele'),
       store.local && cloud.url ? h('button', { class: 'btn', onclick: statsDlg }, 'Statistik') : null,
       h('button', { class: 'btn', onclick: () => settingsDlg(store) }, 'Einstellungen')),
     h('main', { class: 'cols' },
       h('section', { class: 'panel' }, h('h2', null, 'Song aufnehmen'), Picker(store, 'dj')),
       h('section', { class: 'panel' }, inboxBox, h('h2', null, 'Warteschlange ', qCount), queueBox),
-      h('section', { class: 'panel' }, h('h2', null, 'Bühne'), nowBox, playerHint, h('div', { class: 'prog' }, pBar), h('div', { class: 'row between' }, pTime, h('span', { class: 'mut' }, 'Leertaste = Start/Pause')),
+      h('section', { class: 'panel' }, h('h2', null, 'Bühne'), gameBox, nowBox, playerHint, h('div', { class: 'prog' }, pBar), h('div', { class: 'row between' }, pTime, h('span', { class: 'mut' }, 'Leertaste = Start/Pause')),
         h('div', { class: 'transport' }, h('button', { class: 'btn icon', title: 'Von vorn', onclick: () => act('restart') }, ico('restart')),
           h('button', { class: 'btn', title: '10 Sekunden zurück', onclick: () => act('seek', { to: Math.max(0, cur - 10) }) }, '−10'), mainBtn,
           h('button', { class: 'btn', title: '10 Sekunden vor', onclick: () => act('seek', { to: cur + 10 }) }, '+10'),
@@ -573,6 +632,7 @@ function settingsDlg(store) {
     field('Automatischer Start nach Ankündigung', h('select', { class: 'in', onchange: e => set({ autoStart: +e.target.value }) }, [[0, 'Aus – Start per Knopfdruck'], [8, 'nach 8 Sekunden'], [15, 'nach 15 Sekunden'], [25, 'nach 25 Sekunden']].map(([v, l]) => h('option', { value: v, selected: S.autoStart === v }, l)))),
     field('Offene Songs pro Gast', inp(S.maxPerGuest, v => set({ maxPerGuest: v }), { type: 'number', min: 1, max: 9 })),
     toggle('Gäste dürfen YouTube frei durchsuchen', S.guestSearch, v => set({ guestSearch: v }), 'Aus = Gäste wählen aus dem Songbuch' + (s.mode === 'kiosk' ? '.' : ' oder schicken einen Wunsch.')),
+    toggle('KaraFun-Modus', S.karafun, v => set({ karafun: v }), 'Titel ohne Video gelten als KaraFun-Titel: Die App kündigt an und führt die Liste, abgespielt wird in KaraFun.'),
     toggle('Förmliche Ansprache (Sie)', S.formal, v => set({ formal: v }), 'Für Firmenveranstaltungen.'),
     toggle('Info-Leiste im Bühnenbild', S.bar, v => set({ bar: v })),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => confirmDlg('Warteschlange und offene Wünsche leeren?', 'Leeren', () => store.dispatch('clear', { what: 'queue' })) }, 'Warteschlange leeren'),
@@ -752,13 +812,34 @@ function viewGuest(app, room) {
   const store = hasLocal ? new LocalStore(room, 'stage', { from: 'guest', cid: window.KK.CID }) : new RemoteStore(room);
   document.title = 'Karaoke · DJ KOLJA ONE';
   const nowBox = h('div', { class: 'gnow' }), mineBox = h('div'), listBox = h('div'), main = h('div', { class: 'stack' }), waitBox = h('div', { class: 'gwait' });
+  const gameBox = h('div'), mine = {};
+  function drawGame(s) {
+    const g = gameView(s.game); if (!g) return put(gameBox);
+    const T = (du, sie) => s.settings.formal ? sie : du, k = g.type + ':' + g.at + ':' + (g.qi || 0);
+    const send = (a, x, val) => { mine[k] = val; drawGame(store.state); store.dispatch(a, x).then(r => { if (!r.ok) { if (!/schon/.test(r.msg || '')) delete mine[k]; toast(r.msg || 'Das hat nicht geklappt.', 'warn'); drawGame(store.state); } }); };
+    if (g.type === 'battle') {
+      if (g.phase === 'result') { const pa = pct(g.ca, g.cb); return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Battle · Ergebnis'), h('div', { class: 'nm' }, g.ca === g.cb ? 'Unentschieden' : (g.ca > g.cb ? g.a : g.b) + ' gewinnt'), h('p', { class: 'mut' }, g.a + ' ' + pa + ' % · ' + g.b + ' ' + (100 - pa) + ' %'))); }
+      return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Battle'), h('p', null, T('Wer hat dich mehr begeistert?', 'Wer hat Sie mehr begeistert?')),
+        h('div', { class: 'qgrid two' }, [['a', g.a], ['b', g.b]].map(([side, n]) => h('button', { class: 'qa' + (mine[k] === side ? ' picked' : ''), onclick: () => send('vote', { side }, side) }, h('span', null, n)))),
+        mine[k] ? h('p', { class: 'mut' }, T('Deine Stimme zählt. Du kannst sie noch ändern.', 'Ihre Stimme zählt. Sie können sie noch ändern.')) : null));
+    }
+    const qz = quizFind(g.id); if (!qz) return put(gameBox);
+    if (g.phase === 'end') return put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Endstand'), g.top.length ? topList(g.top, 8) : h('p', { class: 'mut' }, 'Danke fürs Mitspielen.')));
+    const name = LS.get('kk:name', '').trim(), reveal = g.phase === 'reveal', my = mine[k];
+    const nameIn = h('input', { class: 'in', placeholder: T('Dein Name fürs Quiz', 'Ihr Name fürs Quiz'), maxLength: 28, value: name, onchange: e => { LS.set('kk:name', e.target.value); drawGame(store.state); } });
+    put(gameBox, h('section', { class: 'panel accent' }, h('h2', null, 'Quiz · Frage ' + (g.qi + 1) + ' von ' + qz.q.length), h('div', { class: 'st wrap' }, qz.q[g.qi][0]),
+      !name ? [h('p', { class: 'mut' }, T('Trag zuerst deinen Namen ein, dann kannst du antworten.', 'Bitte zuerst den Namen eintragen.')), nameIn] : quizGrid(g, reveal, i => send('answer', { i, name }, i), my),
+      reveal ? h('p', null, my == null ? 'Keine Antwort abgegeben.' : my === 0 ? 'Richtig!' : 'Leider falsch – richtig ist: ' + qz.q[g.qi][1]) : my != null ? h('p', { class: 'mut' }, 'Antwort gespeichert.') : null,
+      reveal && g.top.length ? topList(g.top, 5) : null));
+  }
   let built = false;
   function render(s) {
     if (!s) {
       put(waitBox, h('p', { class: 'mut' }, store.conn === 'none' ? 'Die Anmeldung per Handy ist für diese Veranstaltung nicht eingerichtet. Bitte direkt beim DJ melden.' : store.conn === 'err' ? 'Keine Verbindung – bitte Empfang prüfen.' : 'Verbinde mit der Bühne …'));
       return;
     }
-    if (!built) { built = true; waitBox.remove(); main.append(nowBox, mineBox, h('section', { class: 'panel' }, h('h2', null, 'Song aussuchen'), Picker(store, 'guest')), listBox); }
+    if (!built) { built = true; waitBox.remove(); main.append(nowBox, gameBox, mineBox, h('section', { class: 'panel' }, h('h2', null, 'Song aussuchen'), Picker(store, 'guest')), listBox); }
+    drawGame(s);
     const T = (du, sie) => s.settings.formal ? sie : du, c = s.current, name = lc(LS.get('kk:name', ''));
     const mine = e => (e.cid && e.cid === window.KK.CID) || (name && lc(e.name) === name);
     put(nowBox, h('span', { class: 'eyebrow' }, s.name), c ? h('div', null, h('b', null, c.name), ' ', c.phase === 'intro' ? 'ist als Nächstes dran' : 'singt gerade', h('div', { class: 'sa' }, c.t + (c.a ? ' · ' + c.a : ''))) : h('div', { class: 'sa' }, 'Die Bühne ist frei.'),
